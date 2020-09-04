@@ -1,6 +1,8 @@
 #include <cstdio>
+#define _X86_
 #include "detours.h"
 #include <glog/logging.h>
+#include <iostream>
 
 unsigned int sleep_detour(unsigned int seconds)
 {
@@ -74,6 +76,8 @@ int main(int argc, char * argv[])
 
     DetourCriticalFinalize();
     DetourBarrierProcessDetach();
+
+    std::cout << "hello asm" << std::endl;
 
     return 0;
 }

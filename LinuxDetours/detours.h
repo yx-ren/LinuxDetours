@@ -393,14 +393,14 @@ extern "C" {
         _In_opt_ LPCSTR pszFunc,
         _In_opt_ PVOID* ppvFunc);*/
 
-    typedef VOID * PDETOUR_BINARY;
-    typedef VOID * PDETOUR_LOADED_BINARY;
+    typedef void * PDETOUR_BINARY;
+    typedef void * PDETOUR_LOADED_BINARY;
 
     //////////////////////////////////////////////////////////// Transaction APIs.
     //
-    LONG DetourTransactionBegin(VOID);
-    LONG DetourTransactionAbort(VOID);
-    LONG DetourTransactionCommit(VOID);
+    LONG DetourTransactionBegin(void);
+    LONG DetourTransactionAbort(void);
+    LONG DetourTransactionCommit(void);
 
 
     //////////////////////////////////////////////////////////////////////////////

@@ -1,8 +1,9 @@
 UNAME := $(shell uname)
 UNAME_M := $(shell uname -m)
 
-CXX = clang++
-CXX_FLAGS =  -Wall -Wno-null-conversion -std=c++11 -g -O0 -fno-omit-frame-pointer -fPIC -shared
+CXX = g++
+CXX_FLAGS = -Wall -Wno-null-conversion -std=c++11 -g -O0 -fno-omit-frame-pointer -fPIC -shared
+CXX_EXE_FLAGS = -Wall -std=c++11 -g -O0
 CXX_DEFINES = -lpthread -ldl -lglog 
 
 SOURCES = barrier.cpp detours.cpp disasm.cpp plthook_elf.cpp
@@ -27,8 +28,11 @@ else
     endif
 endif
 
+target_app = "linux_detours.test"
 linux_x64:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_X86) -D_AMD64_ -D_UNIX64 -o $(LIB_NAME)64.so	
+	$(CXX) $(CXX_EXE_FLAGS) main.cpp $(CXX_DEFINES)  -L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 \
+		-o $(target_app)
 linux_arm:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_ARM) -mcpu=cortex-a5 -D_ARM_ -D_ARM32_ -o $(LIB_NAME)32.so
 linux_arm64:
@@ -37,6 +41,7 @@ macos_x64:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_X86) -D_AMD64_ -D_UNIX64 -o $(LIB_NAME)64.dylib
 
 clean:
+	rm -f $(target_app)
 ifeq ($(UNAME),Darwin)
 	rm -f $(LIB_NAME)64.dylib
 else
