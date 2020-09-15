@@ -1,0 +1,106 @@
+一个发现, 貌似内联汇编的实现和实际操作数是相反的
+trampoline_x86.cpp中内联asm如下所示
+trampoline_template_x64:
+
+    push %rsp
+    push qword ptr [%rsp]
+    and %rsp, 0xFFFFFFFFFFFFFFF0
+
+    mov %rax, %rsp
+
+实际利用objdump dump出来的汇编代码
+    000000000000e744 <trampoline_template_x64>:
+    e744:   54                      push   %rsp
+    e745:   ff 34 24                pushq  (%rsp)
+    e748:   48 83 e4 f0             and    $0xfffffffffffffff0,%rsp
+    e74c:   48 89 e0                mov    %rsp,%rax
+    e74f:   57                      push   %rdi
+    e750:   56                      push   %rsi
+    e751:   52                      push   %rdx
+    e752:   51                      push   %rcx
+    e753:   41 50                   push   %r8
+    e755:   41 51                   push   %r9
+    e757:   48 81 ec 80 00 00 00    sub    $0x80,%rsp
+
+
+外层应用:
+最外层应该是直接调用接口DetourGetTrampolinePtr(), 其内部会根据不同平台的宏来完成对应的功能
+UCHAR* DetourGetTrampolinePtr()
+{
+#ifdef DETOURS_X64
+    UCHAR* Ptr = (UCHAR*)trampoline_template();
+#endif
+
+#ifdef DETOURS_X86
+    UCHAR* Ptr = (UCHAR*)Trampoline_ASM_x86;
+#endif
+
+    if (*Ptr == 0xE9)
+        Ptr += *((int*)(Ptr + 1)) + 5;
+
+    return Ptr;
+}
+总觉得DetourGetTrampolinePtr()返回的指针指向一个已经"预备好"的hook模板
+把对应需要hook的接口以及期望替代后的hookproc塞进去就可以了
+DetourGetTrampolinePtr()貌似返回一个类似(汇编代码的)函数指针
+
+PBYTE Ptr = (PBYTE)o->pTrampoline->Trampoline;
+for (ULONG Index = 0; Index < TrampolineSize; Index++)
+{
+    switch (*((ULONG*)(Ptr)))
+    {
+        /*Handle*/            case 0x1A2B3C05: *((ULONG*)Ptr) = (ULONG)o->pTrampoline; break;
+        /*UnmanagedIntro*/    case 0x1A2B3C03: *((ULONG*)Ptr) = (ULONG)o->pTrampoline->HookIntro; break;
+        /*OldProc*/           case 0x1A2B3C01: *((ULONG*)Ptr) = (ULONG)o->pTrampoline->OldProc; break;
+        /*Ptr:NewProc*/       case 0x1A2B3C07: *((ULONG*)Ptr) = (ULONG)&o->pTrampoline->HookProc; break;
+        /*NewProc*/           case 0x1A2B3C00: *((ULONG*)Ptr) = (ULONG)o->pTrampoline->HookProc; break;
+        /*UnmanagedOutro*/    case 0x1A2B3C06: *((ULONG*)Ptr) = (ULONG)o->pTrampoline->HookOutro; break;
+        /*IsExecuted*/        case 0x1A2B3C02: *((ULONG*)Ptr) = (ULONG)o->pTrampoline->IsExecutedPtr; break;
+        /*RetAddr*/           case 0x1A2B3C04: *((ULONG*)Ptr) = (ULONG)((PBYTE)o->pTrampoline->Trampoline + 92); break;
+    }
+
+    Ptr++;
+}
+
+其中(PBYTE*)&o->pTrampoline->Trampoline为上述内联汇编直接生成的机器码
+detour_gen_jmp_indirect(o->pTrampoline->rbCodeIn, ((PBYTE*)&o->pTrampoline->Trampoline);PBYTE*)&o->pTrampoline->Trampoline);
+
+// 让[pbCode]紧跟一个jmp [ppbJmpVal]
+inline PBYTE detour_gen_jmp_indirect(PBYTE pbCode, PBYTE *ppbJmpVal)
+{
+    *pbCode++ = 0xff;   // jmp [+imm32]
+    *pbCode++ = 0x25;
+    *((INT32*&)pbCode)++ = (INT32)((PBYTE)ppbJmpVal);
+    return pbCode;
+}
+
+PBYTE pbCode = detour_gen_jmp_immediate(o->pbTarget, o->pTrampoline->rbCodeIn);
+inline PBYTE detour_gen_jmp_immediate(PBYTE pbCode, PBYTE pbJmpVal)
+{
+    PBYTE pbJmpSrc = pbCode + 5;
+    *pbCode++ = 0xE9;   // jmp +imm32
+    *((INT32*&)pbCode)++ = (INT32)(pbJmpVal - pbJmpSrc);
+    return pbCode;
+}
+
+感觉该工程应该应该是不仅仅实现了单纯的hook, 即只替换一个函数入口地址
+而是通过结构体里面的某个变量还同时控制了在进入hook后是否再一次调用原函数
+
+内层实现:
+
+void* trampoline_template() {
+    uintptr_t ret = 0;
+#if defined(DETOURS_X64)
+    ret = reinterpret_cast<uintptr_t>(&trampoline_template_x64);
+#endif
+    asm("" : "=rm"(ret)); // force compiler to abandon its assumption that ret is aligned
+    //ret &= ~1;
+    return reinterpret_cast<void*>(ret);
+}
+
+这里面在调用的时候有一句asm("" : "=rm"(ret));
+详情可见下面的描述, 具体理解为强制让编译器放弃对齐即可
+https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.htm
+
+
+%rdi，%rsi，%rdx，%rcx，%r8，%r9 用作函数参数，依次对应第1参数，第2参数。。。

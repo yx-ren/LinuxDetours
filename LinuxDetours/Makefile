@@ -11,10 +11,11 @@ SOURCES = barrier.cpp detours.cpp disasm.cpp plthook_elf.cpp
 
 TRAMPOLINE_ARM = trampoline_arm.cpp
 TRAMPOLINE_X86 = trampoline_x86.cpp
+TRAMPOLINE_MIPS = trampoline_mips.cpp
 
 LIB_NAME = libdetours
 
-.PHONY: linux_arm linux_arm64 linux_x64 macos_x64
+.PHONY: linux_arm linux_arm64 linux_x64 macos_x64 linux_mips64
 
 all:
 ifeq ($(UNAME),Darwin)
@@ -22,6 +23,8 @@ ifeq ($(UNAME),Darwin)
 else
     ifeq ($(UNAME_M),x86_64)
 		$(MAKE) linux_x64
+    else ifeq ($(UNAME_M),mips64)
+		$(MAKE) linux_mips64
     else ifneq (,$(findstring arm,$(UNAME_M)))
 		$(MAKE) linux_arm
     else

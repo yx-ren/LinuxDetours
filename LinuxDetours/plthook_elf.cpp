@@ -78,29 +78,43 @@
 #define Elf_Plt_Rel   Elf_Rela
 #define PLT_DT_REL    DT_RELA
 #define R_GLOBAL_DATA R_X86_64_GLOB_DAT
+
 #elif defined __i386__ || defined __i386
 #define R_JUMP_SLOT   R_386_JMP_SLOT
 #define Elf_Plt_Rel   Elf_Rel
 #define PLT_DT_REL    DT_REL
 #define R_GLOBAL_DATA R_386_GLOB_DAT
+
 #elif defined __arm__ || defined __arm
 #define R_JUMP_SLOT   R_ARM_JUMP_SLOT
 #define Elf_Plt_Rel   Elf_Rel
+
 #elif defined __aarch64__ || defined __aarch64 /* ARM64 */
 #define R_JUMP_SLOT   R_AARCH64_JUMP_SLOT
 #define Elf_Plt_Rel   Elf_Rela
+
 #elif defined __powerpc64__
 #define R_JUMP_SLOT   R_PPC64_JMP_SLOT
 #define Elf_Plt_Rel   Elf_Rela
+
 #elif defined __powerpc__
 #define R_JUMP_SLOT   R_PPC_JMP_SLOT
 #define Elf_Plt_Rel   Elf_Rela
+
+#elif defined __mips__ || defined __mips
+#define R_JUMP_SLOT   R_MIPS_JUMP_SLOT
+#define Elf_Plt_Rel   Elf_Rela
+#define PLT_DT_REL    DT_RELA
+#define R_GLOBAL_DATA R_MIPS_GLOB_DAT
+
 #elif 0 /* disabled because not tested */ && (defined __sparcv9 || defined __sparc_v9__)
 #define R_JUMP_SLOT   R_SPARC_JMP_SLOT
 #define Elf_Plt_Rel   Elf_Rela
+
 #elif 0 /* disabled because not tested */ && (defined __sparc || defined __sparc__)
 #define R_JUMP_SLOT   R_SPARC_JMP_SLOT
 #define Elf_Plt_Rel   Elf_Rela
+
 #elif 0 /* disabled because not tested */ && (defined __ia64 || defined __ia64__)
 #define R_JUMP_SLOT   R_IA64_IPLTMSB
 #define Elf_Plt_Rel   Elf_Rela
