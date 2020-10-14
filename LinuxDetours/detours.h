@@ -19,6 +19,7 @@
 #undef DETOURS_IA64
 #undef DETOURS_ARM
 #undef DETOURS_ARM64
+#undef DETOURS_MIPS64
 #undef DETOURS_BITS
 #undef DETOURS_32BIT
 #undef DETOURS_64BIT
@@ -35,16 +36,22 @@
 #define DETOURS_IA64
 #define DETOURS_OPTION_BITS 32
 
+#elif defined(_MIPS64_)
+#define DETOURS_MIPS64
+#define DETOURS_OPTION_BITS 32
+
 #elif defined(_ARM_)
 #define DETOURS_ARM
+
 #if defined(_ARM32_)
 #define DETOURS_ARM32
 #endif
+
 #elif defined(_ARM64_)
 #define DETOURS_ARM64
 
 #else
-#error Unknown architecture (x86, amd64, ia64, arm, arm64)
+#error Unknown architecture (x86, amd64, ia64, arm, arm64, mips64)
 #endif
 
 #ifdef _UNIX64

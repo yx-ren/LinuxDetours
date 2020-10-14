@@ -567,6 +567,246 @@ inline ULONG detour_is_code_filler(PBYTE pbCode)
 
 #endif // DETOURS_X64
 
+///////////////////////////////////////////////////////////////////////// mips64.
+//
+#ifdef DETOURS_MIPS64
+
+const ULONG DETOUR_TRAMPOLINE_CODE_SIZE = 0x150;
+
+struct _DETOUR_TRAMPOLINE
+{
+    // An X64 instuction can be 15 bytes long.
+    // In practice 11 seems to be the limit.
+    BYTE               rbCode[30];     // target code + jmp to pbRemain.
+    BYTE               cbCode;         // size of moved target code.
+    BYTE               cbCodeBreak;    // padding to make debugging easier.
+    BYTE               rbRestore[30];  // original target code.
+    BYTE               cbRestore;      // size of original target code.
+    BYTE               cbRestoreBreak; // padding to make debugging easier.
+    _DETOUR_ALIGN      rAlign[8];      // instruction alignment array.
+    PBYTE              pbRemain;       // first instruction after moved code. [free list]
+    PBYTE              pbDetour;       // first instruction of detour function.
+    BYTE               rbCodeIn[8];    // jmp [pbDetour]
+    HOOK_ACL           LocalACL;
+    void*              Callback;
+    ULONG              HLSIndex;
+    ULONG              HLSIdent;
+    TRACED_HOOK_HANDLE OutHandle; // handle returned to user
+    void*              Trampoline;
+    INT                IsExecuted;
+    void*              HookIntro; // . NET Intro function
+    UCHAR*             OldProc;  // old target function
+    void*              HookProc; // function we detour to
+    void*              HookOutro;   // .NET Outro function
+    int*               IsExecutedPtr;
+    BYTE               rbTrampolineCode[DETOUR_TRAMPOLINE_CODE_SIZE];
+};
+
+//C_ASSERT(sizeof(_DETOUR_TRAMPOLINE) == 968);
+
+enum {
+    SIZE_OF_JMP = 5
+};
+
+inline PBYTE detour_gen_jmp_immediate(PBYTE pbCode, PBYTE pbJmpVal)
+{
+    PBYTE pbJmpSrc = pbCode + 5;
+    *pbCode++ = 0xE9;   // jmp +imm32
+    *((INT32*&)pbCode)++ = (INT32)(pbJmpVal - pbJmpSrc);
+    return pbCode;
+}
+
+inline PBYTE detour_gen_jmp_indirect(PBYTE pbCode, PBYTE *ppbJmpVal)
+{
+    PBYTE pbJmpSrc = pbCode + 6;
+    *pbCode++ = 0xff;   // jmp [+imm32]
+    *pbCode++ = 0x25;
+    *((INT32*&)pbCode)++ = (INT32)((PBYTE)ppbJmpVal - pbJmpSrc);
+    return pbCode;
+}
+
+inline PBYTE detour_gen_brk(PBYTE pbCode, PBYTE pbLimit)
+{
+    while (pbCode < pbLimit) {
+        *pbCode++ = 0xcc;   // brk;
+    }
+    return pbCode;
+}
+
+inline PBYTE detour_skip_jmp(PBYTE pbCode, PVOID *ppGlobals)
+{
+    if (pbCode == NULL) {
+        return NULL;
+    }
+    if (ppGlobals != NULL) {
+        *ppGlobals = NULL;
+    }
+
+    // First, skip over the import vector if there is one.
+    if (pbCode[0] == 0xff && pbCode[1] == 0x25) {   // jmp [+imm32]
+                                                    // Looks like an import alias jump, then get the code it points to.
+        PBYTE pbTarget = pbCode + 6 + *(UNALIGNED INT32 *)&pbCode[2];
+        if (detour_is_imported(pbCode, pbTarget)) {
+            PBYTE pbNew = *(UNALIGNED PBYTE *)pbTarget;
+            DETOUR_TRACE(("%p->%p: skipped over import table.\n", pbCode, pbNew));
+            pbCode = pbNew;
+        }
+    }
+
+    // Then, skip over a patch jump
+    if (pbCode[0] == 0xeb) {   // jmp +imm8
+        PBYTE pbNew = pbCode + 2 + *(CHAR *)&pbCode[1];
+        DETOUR_TRACE(("%p->%p: skipped over short jump.\n", pbCode, pbNew));
+        pbCode = pbNew;
+
+        // First, skip over the import vector if there is one.
+        if (pbCode[0] == 0xff && pbCode[1] == 0x25) {   // jmp [+imm32]
+                                                        // Looks like an import alias jump, then get the code it points to.
+            PBYTE pbTarget = pbCode + 6 + *(UNALIGNED INT32 *)&pbCode[2];
+            if (detour_is_imported(pbCode, pbTarget)) {
+                pbNew = *(UNALIGNED PBYTE *)pbTarget;
+                DETOUR_TRACE(("%p->%p: skipped over import table.\n", pbCode, pbNew));
+                pbCode = pbNew;
+            }
+        }
+        // Finally, skip over a long jump if it is the target of the patch jump.
+        else if (pbCode[0] == 0xe9) {   // jmp +imm32
+            pbNew = pbCode + 5 + *(UNALIGNED INT32 *)&pbCode[1];
+            DETOUR_TRACE(("%p->%p: skipped over long jump.\n", pbCode, pbNew));
+            pbCode = pbNew;
+        }
+    }
+    return pbCode;
+}
+
+inline void detour_find_jmp_bounds(PBYTE pbCode,
+    PDETOUR_TRAMPOLINE *ppLower,
+    PDETOUR_TRAMPOLINE *ppUpper)
+{
+    // We have to place trampolines within +/- 2GB of code.
+    ULONG_PTR lo = detour_2gb_below((ULONG_PTR)pbCode);
+    ULONG_PTR hi = detour_2gb_above((ULONG_PTR)pbCode);
+    DETOUR_TRACE(("[%p..%p..%p]\n", lo, pbCode, hi));
+
+    // And, within +/- 2GB of relative jmp vectors.
+    if (pbCode[0] == 0xff && pbCode[1] == 0x25) {   // jmp [+imm32]
+        PBYTE pbNew = pbCode + 6 + *(UNALIGNED INT32 *)&pbCode[2];
+
+        if (pbNew < pbCode) {
+            hi = detour_2gb_above((ULONG_PTR)pbNew);
+        }
+        else {
+            lo = detour_2gb_below((ULONG_PTR)pbNew);
+        }
+        DETOUR_TRACE(("[%p..%p..%p] [+imm32]\n", lo, pbCode, hi));
+    }
+    // And, within +/- 2GB of relative jmp targets.
+    else if (pbCode[0] == 0xe9) {   // jmp +imm32
+        PBYTE pbNew = pbCode + 5 + *(UNALIGNED INT32 *)&pbCode[1];
+
+        if (pbNew < pbCode) {
+            hi = detour_2gb_above((ULONG_PTR)pbNew);
+        }
+        else {
+            lo = detour_2gb_below((ULONG_PTR)pbNew);
+        }
+        DETOUR_TRACE(("[%p..%p..%p] +imm32\n", lo, pbCode, hi));
+    }
+
+    *ppLower = (PDETOUR_TRAMPOLINE)lo;
+    *ppUpper = (PDETOUR_TRAMPOLINE)hi;
+}
+
+inline BOOL detour_does_code_end_function(PBYTE pbCode)
+{
+    if (pbCode[0] == 0xeb ||    // jmp +imm8
+        pbCode[0] == 0xe9 ||    // jmp +imm32
+        pbCode[0] == 0xe0 ||    // jmp eax
+        pbCode[0] == 0xc2 ||    // ret +imm8
+        pbCode[0] == 0xc3 ||    // ret
+        pbCode[0] == 0xcc) {    // brk
+        return TRUE;
+    }
+    else if (pbCode[0] == 0xf3 && pbCode[1] == 0xc3) {  // rep ret
+        return TRUE;
+    }
+    else if (pbCode[0] == 0xff && pbCode[1] == 0x25) {  // jmp [+imm32]
+        return TRUE;
+    }
+    else if ((pbCode[0] == 0x26 ||      // jmp es:
+        pbCode[0] == 0x2e ||      // jmp cs:
+        pbCode[0] == 0x36 ||      // jmp ss:
+        pbCode[0] == 0x3e ||      // jmp ds:
+        pbCode[0] == 0x64 ||      // jmp fs:
+        pbCode[0] == 0x65) &&     // jmp gs:
+        pbCode[1] == 0xff &&       // jmp [+imm32]
+        pbCode[2] == 0x25) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+inline ULONG detour_is_code_filler(PBYTE pbCode)
+{
+    // 1-byte through 11-byte NOPs.
+    if (pbCode[0] == 0x90) {
+        return 1;
+    }
+    if (pbCode[0] == 0x66 && pbCode[1] == 0x90) {
+        return 2;
+    }
+    if (pbCode[0] == 0x0F && pbCode[1] == 0x1F && pbCode[2] == 0x00) {
+        return 3;
+    }
+    if (pbCode[0] == 0x0F && pbCode[1] == 0x1F && pbCode[2] == 0x40 &&
+        pbCode[3] == 0x00) {
+        return 4;
+    }
+    if (pbCode[0] == 0x0F && pbCode[1] == 0x1F && pbCode[2] == 0x44 &&
+        pbCode[3] == 0x00 && pbCode[4] == 0x00) {
+        return 5;
+    }
+    if (pbCode[0] == 0x66 && pbCode[1] == 0x0F && pbCode[2] == 0x1F &&
+        pbCode[3] == 0x44 && pbCode[4] == 0x00 && pbCode[5] == 0x00) {
+        return 6;
+    }
+    if (pbCode[0] == 0x0F && pbCode[1] == 0x1F && pbCode[2] == 0x80 &&
+        pbCode[3] == 0x00 && pbCode[4] == 0x00 && pbCode[5] == 0x00 &&
+        pbCode[6] == 0x00) {
+        return 7;
+    }
+    if (pbCode[0] == 0x0F && pbCode[1] == 0x1F && pbCode[2] == 0x84 &&
+        pbCode[3] == 0x00 && pbCode[4] == 0x00 && pbCode[5] == 0x00 &&
+        pbCode[6] == 0x00 && pbCode[7] == 0x00) {
+        return 8;
+    }
+    if (pbCode[0] == 0x66 && pbCode[1] == 0x0F && pbCode[2] == 0x1F &&
+        pbCode[3] == 0x84 && pbCode[4] == 0x00 && pbCode[5] == 0x00 &&
+        pbCode[6] == 0x00 && pbCode[7] == 0x00 && pbCode[8] == 0x00) {
+        return 9;
+    }
+    if (pbCode[0] == 0x66 && pbCode[1] == 0x66 && pbCode[2] == 0x0F &&
+        pbCode[3] == 0x1F && pbCode[4] == 0x84 && pbCode[5] == 0x00 &&
+        pbCode[6] == 0x00 && pbCode[7] == 0x00 && pbCode[8] == 0x00 &&
+        pbCode[9] == 0x00) {
+        return 10;
+    }
+    if (pbCode[0] == 0x66 && pbCode[1] == 0x66 && pbCode[2] == 0x66 &&
+        pbCode[3] == 0x0F && pbCode[4] == 0x1F && pbCode[5] == 0x84 &&
+        pbCode[6] == 0x00 && pbCode[7] == 0x00 && pbCode[8] == 0x00 &&
+        pbCode[9] == 0x00 && pbCode[10] == 0x00) {
+        return 11;
+    }
+
+    // int 3.
+    if (pbCode[0] == 0xcc) {
+        return 1;
+    }
+    return 0;
+}
+
+#endif // DETOURS_MIPS64
+
 //////////////////////////////////////////////////////////////////////// IA64.
 //
 #ifdef DETOURS_IA64
