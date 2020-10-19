@@ -8,6 +8,11 @@
 #include "types.h"
 #include "limits.h"
 #include "plthook.h"
+#include <iostream>
+#include <ostream>
+#include <sstream>
+#include <iomanip>
+#include <string.h>
 
 //#define DETOUR_DEBUG 1
 #define DETOURS_INTERNAL
@@ -15,6 +20,19 @@
 #include "detours.h"
 
 #define NOTHROW
+
+std::string dumpHex(const char* buf, int len)
+{
+    std::ostringstream oss;
+    for (int i = 0; i != len; i++)
+    {
+        oss << "0x" << std::setw(2) << std::setfill('0') << std::hex << ((int)buf[i] & 0xff) << " ";
+        if (((i + 1) % 0x10) == 0)
+            oss << std::endl;
+    }
+
+    return oss.str();
+}
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -2704,6 +2722,7 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
     _Out_opt_ PVOID *ppRealTarget,
     _Out_opt_ PVOID *ppRealDetour)
 {
+    DETOUR_TRACE(("detours: trigger DetourAttachEx(), pbSrc=%p, pDetour=%p\n", *ppPointer, pDetour));
     LONG error = NO_ERROR;
 
     if (ppRealTrampoline != NULL) {
@@ -2872,6 +2891,11 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
     }
 #endif
 
+    std::string Trampoline_code = dumpHex((const char*)pbTrampoline, 32);
+    std::string pbSrc_code = dumpHex((const char*)pbSrc, 32);
+    DETOUR_TRACE(("Trampoline_code:\n%s\n", Trampoline_code.c_str()));
+    DETOUR_TRACE(("pbSrc_code:\n%s\n", pbSrc_code.c_str()));
+
     while (cbTarget < cbJump) {
         PBYTE pbOp = pbSrc;
 #ifdef DETOURS_ARM
@@ -2890,6 +2914,9 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
         pTrampoline->rAlign[nAlign].obTarget = cbTarget;
         pTrampoline->rAlign[nAlign].obTrampoline = pbTrampoline - pTrampoline->rbCode;
         nAlign++;
+
+        std::string rbCode = dumpHex((const char*)pTrampoline->rbCode, 32);
+        DETOUR_TRACE(("rbCode:\n%s\n", rbCode.c_str()));
 
         if (nAlign >= ARRAYSIZE(pTrampoline->rAlign)) {
             break;
