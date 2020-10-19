@@ -7,6 +7,7 @@ CXX_EXE_FLAGS = -Wall -std=c++11 -g -O0
 CXX_DEFINES = -lpthread -ldl -lglog 
 
 SOURCES = barrier.cpp detours.cpp disasm.cpp plthook_elf.cpp
+#PREPROCESS = $(CXX) -E detours.cpp -o detours.E
 
 TRAMPOLINE_ARM = trampoline_arm.cpp
 TRAMPOLINE_X86 = trampoline_x86.cpp
@@ -34,10 +35,16 @@ linux_x64:
 	$(CXX) $(CXX_EXE_FLAGS) main.cpp $(CXX_DEFINES) -L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 \
 		-Wl,-rpath=./ \
 		-o $(target_app)
+	$(CXX) -E detours.cpp -D_AMD64_ -D_UNIX64 -o detours.E
 linux_arm:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_ARM) -mcpu=cortex-a5 -D_ARM_ -D_ARM32_ -o $(LIB_NAME)32.so
 linux_arm64:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_ARM) -D_ARM64_ -D_UNIX64 -o $(LIB_NAME)64.so
+linux_mips64:
+	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_MIPS) -D_MIPS64_ -D_UNIX64 -o $(LIB_NAME)64.so
+	$(CXX) $(CXX_EXE_FLAGS) main.cpp $(CXX_DEFINES)  -L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 -Wl,-rpath=./ -Wl,-rpath=/usr/local/lib/ \
+		-o $(target_app)
+	$(CXX) -E detours.cpp -D_MIPS64_ -D_UNIX64 -o detours.E
 macos_x64:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_X86) -D_AMD64_ -D_UNIX64 -o $(LIB_NAME)64.dylib
 
