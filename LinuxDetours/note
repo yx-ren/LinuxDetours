@@ -1,0 +1,565 @@
+note
+obj文件
+貌似一个obj文件通过nm或者objdump或者readelf -a可以看到其内部每个调用的函数
+也就是说只要是在obj文件中出现的函数, 不管是自己写的还是调用系统或者第三方的, 都会有一个入口地址
+(应该是有一个单独的表用于存放所有的函数入口地址)
+
+VOID* test_runner(void*)
+{
+    LOG(INFO) << "detours_test: Calling sleep for 1 second";
+    sleep(1);
+    LOG(INFO) << "detours_test: Calling sleep again for 2 seconds";
+    sleep(2);
+    
+    LOG(INFO)  << "detours_test: Done sleeping\n";
+    return NULL;
+}
+
+unsigned int sleep_detour(unsigned int seconds)
+{
+    LOG(INFO) << "detours_test: Called sleep_detour";
+    return sleep(seconds);
+}
+
+int main()
+{
+    DetourBarrierProcessAttach();
+    DetourCriticalInitialize();
+
+    LONG sleep_detour_callback = 0;
+    TRACED_HOOK_HANDLE sleep_detour_handle = new HOOK_TRACE_INFO();    
+    /*
+    LONG DetourExport DetourInstallHook(
+        void* InEntryPoint,
+        void* InHookProc,
+        void* InCallback,
+        TRACED_HOOK_HANDLE OutHandle);
+    */
+    DetourInstallHook((void*)sleep, (void*)sleep_detour, &sleep_detour_callback, sleep_detour_handle);
+
+    /*
+    LONG DetourSetExclusiveACL(
+        ULONG* InThreadIdList,
+        ULONG InThreadCount,
+        TRACED_HOOK_HANDLE InHandle)
+    */
+    ULONG ret = DetourSetExclusiveACL(new ULONG(), 1, (TRACED_HOOK_HANDLE)sleep_detour_handle);
+
+    pthread_t t;
+    pthread_create(&t, NULL, test_runner, NULL);
+    pthread_join(t, NULL);
+
+    DetourUninstallHook(sleep_detour_handle);
+
+    delete sleep_detour_handle;
+
+    sleep(1);
+
+    DetourCriticalFinalize();
+    DetourBarrierProcessDetach();
+
+    std::cout << "hello asm" << std::endl;
+
+    return 0;
+}
+
+
+
+LONG DetourSetExclusiveACL(
+    ULONG* InThreadIdList,
+    ULONG InThreadCount,
+    TRACED_HOOK_HANDLE InHandle)
+{
+    /*
+    Description:
+
+    Sets an exclusive hook local ACL based on the given thread ID list.
+
+    Parameters:
+    - InThreadIdList
+    An array of thread IDs. If you specific zero for an entry in this array,
+    it will be automatically replaced with the calling thread ID.
+
+    - InThreadCount
+    The count of entries listed in the thread ID list. This value must not exceed
+    MAX_ACE_COUNT!
+
+    - InHandle
+    The hook handle whose local ACL is going to be set.
+    */
+}
+
+
+目前主要应用到了两个函数
+DetourInstallHook()以及DetourSetExclusiveACL()
+前者输入被hook函数以及hook后替换函数的入口点, 输出则为一个TRACED_HOOK_HANDLE的结构体, 猜测是用来注册ACL
+即DetourSetExclusiveACL()的输入参数
+
+
+LONG DetourExport DetourInstallHook(
+        void* InEntryPoint, // 被hook函数的入口点
+        void* InHookProc, // 替换被hook函数的入口点
+        void* InCallback, // 这个是不是貌似可以暂时不用? 如果不需要回调的话
+        TRACED_HOOK_HANDLE OutHandle) // 这个貌似是需要用到的, 在hook之后用于保存一个hook替换后函数的handle
+                                      // 然后调用DetourSetExclusiveACL()将hook后的handle设置进去
+其中【OutHandle】这个参数需要在前面预分配内存, 然后。。就不用管了, 成功后会自动将各种结构填充到该结构中
+看下该函数相关实现
+{
+    /*
+    Description:
+
+    Installs a hook at the given entry point, redirecting all
+    calls to the given hooking method. The returned handle will
+    either be released on library unloading or explicitly through
+    DetourUninstallHook() or DetourUninstallAllHooks().
+
+    Parameters:
+
+    - InEntryPoint
+
+    An entry point to hook. Not all entry points are hookable. In such
+    a case STATUS_NOT_SUPPORTED will be returned.
+
+    - InHookProc
+
+    The method that should be called instead of the given entry point.
+    Please note that calling convention, parameter count and return value
+    shall match EXACTLY!
+
+    - InCallback
+
+    An uninterpreted callback later available through
+    DetourBarrierGetCallback().
+
+    - OutPHandle
+
+    The memory portion supplied by *OutHandle is expected to be preallocated
+    by the caller. This structure is then filled by the method on success and
+    must stay valid for hook-life time. Only if you explicitly call one of
+    the hook uninstallation APIs, you can safely release the handle memory.
+
+    Returns:
+
+    STATUS_NO_MEMORY
+
+    Unable to allocate memory around the target entry point.
+
+    STATUS_NOT_SUPPORTED
+
+    The target entry point contains unsupported instructions.
+
+    STATUS_INSUFFICIENT_RESOURCES
+
+    The limit of MAX_HOOK_COUNT simultaneous hooks was reached.
+
+    */
+
+    LONG    NtStatus = -1;
+    LONG    error = -1;
+    PDETOUR_TRAMPOLINE pTrampoline = NULL;
+
+    // validate parameters
+    if (!IsValidPointer(InEntryPoint, 1)) // IsValidPointer -> ((InPtr == NULL) || (InPtr == (PVOID)~0)) ? false : true;
+        THROW(-2, (PWCHAR)"Invalid entry point.");
+
+    if (!IsValidPointer(InHookProc, 1))
+        THROW(-3, (PWCHAR)"Invalid hook procedure.");
+    
+    if (!IsValidPointer(OutHandle, sizeof(HOOK_TRACE_INFO)))
+        THROW(-4, (PWCHAR)"The hook handle storage is expected to be allocated by the caller.");
+
+    if (OutHandle->Link != NULL) // 【PLOCAL_HOOK_INFO HOOK_TRACE_INFO::Link】, 依然在检测指针是否有效, 是否已经有被填充过
+        THROW(-5, (PWCHAR)"The given trace handle seems to already be associated with a hook.");
+
+    error = DetourTransactionBegin();
+            |
+            |
+            // Only one transaction is allowed at a time, 
+            // TODO......
+
+            // Make sure the trampoline pages are writable.
+            s_nPendingError = detour_writable_trampoline_regions();
+                              |
+                              |
+                              |
+                              // 目测s_pRegions已经在之前被初始化
+                              // DetourBarrierProcessAttach() or DetourCriticalInitialize()
+                              // 貌似s_pRegions只在DetourAttachEx()进行了初始化
+                              // 在该函数内部可能仍然为s_pRegions仍然为null
+                              // 但是不影响逻辑执行
+                              // Mark all of the regions as writable.
+                              for (PDETOUR_REGION pRegion = s_pRegions; pRegion != NULL; pRegion = pRegion->pNext)
+                                  if (mprotect(detour_get_page((PBYTE)pRegion), DETOUR_REGION_SIZE, PAGE_EXECUTE_READWRITE))
+                                      return -1;
+                              return NO_ERROR;
+            return s_nPendingError;
+
+    error = DetourUpdateThread(pthread_self()); // nothing todo, ignore this
+
+    error = DetourAttachEx(&(PVOID &)InEntryPoint, InHookProc, &pTrampoline, NULL, NULL); // 目测这一步主要初始化pTrampoline
+            |
+            |
+            |
+            PBYTE pbTarget = (PBYTE)*ppPointer; (InEntryPoint == ppPointer)
+            pbTarget = (PBYTE)DetourCodeFromPointer(pbTarget, &(PVOID &)pGlobals); // 参数1就是被hook的函数(入口点)
+                                                                                   // 这里应该是尝试忽略的(平台)各种op code, 尝试直接取实际的地址
+                                                                                   // 但看起来貌似是分了两个大的步骤
+                                                                                   // 1.First, skip over the import vector if there is one.
+                                                                                   // if (pbCode[0] == 0xff && pbCode[1] == 0x25) {   // jmp [imm32]
+                                                                                   // PBYTE pbTarget = *(UNALIGNED PBYTE *)&pbCode[2];
+                                                                                   // skipped over import table
+                                                                                   // 这里看起来像是忽略导出表, 忽略前两个op code
+
+                                                                                   // 2. Then, skip over a patch jump
+                                                                                   // if (pbCode[0] == 0xeb) {   // jmp +imm8
+                                                                                   // PBYTE pbNew = pbCode + 2 + *(CHAR *)&pbCode[1];
+                                                                                   // skipped over short jump
+                                                                                   // 这里看起来是忽略短跳转
+                                                                                        // 如果仍然存在导出表, 继续忽略导出表
+                                                                                        // 如果不存在, 看下是否是接一个long jump, 如果是就忽略
+
+
+            pDetour = DetourCodeFromPointer(pDetour, &(PVOID &)pGlobals);
+                      |
+                      |
+                      |
+                      PVOID DetourCodeFromPointer(_In_ PVOID pPointer, _Out_opt_ PVOID *ppGlobals)
+                      {
+                          return detour_skip_jmp((PBYTE)pPointer, ppGlobals); // 瞅瞅这个函数再干啥
+                                 |
+                                 |
+                                 |
+                                 PBYTE detour_skip_jmp(PBYTE pbCode, PVOID *ppGlobals) // 内部实现了包括跳过长跳转, 短跳转和跳转表
+                                                                                       // 最终令pbCode直接指向实际地址
+                                 // First, skip over the import vector if there is one. // 跳过导入表
+                                 // jmp [imm32]
+                                 // Looks like an import alias jump, then get the code it points to.
+                                 if (pbCode[0] == 0xff && pbCode[1] == 0x25) // 0xff25是jmp的跳转前缀码, 这个看起来像是硬编码
+                                                                             // 不同的指令集jmp指令肯定不一样
+                                 {
+                                     PBYTE pbTarget = *(UNALIGNED PBYTE *)&pbCode[2]; // pbTarget跳过了jmp指令(2个字节 ff 25),
+                                                                                      // 直接指向jmp之后的实际地址
+                                     if (detour_is_imported(pbCode, pbTarget)) // 函数内部实现了让pbTarget直接指向pbCode之后的地址
+                                         |
+                                         |
+                                         |
+                                         static bool detour_is_imported(PBYTE pbCode, PBYTE pbAddress)
+                                         {
+                                             plthook_t *plthook;
+                                             plthook_open(&plthook, NULL);
+                                             unsigned int pos = 0; /* This must be initialized with zero. */
+                                             const char *name;
+                                             void **addr;
+                                         
+                                             while (plthook_enum(plthook, &pos, &name, &addr) == 0) {
+                                                 if (addr != NULL && (PBYTE)addr == pbAddress) {
+                                                     plthook_close(plthook);
+                                                     return true;
+                                                 }
+                                             }
+                                             plthook_close(plthook);
+                                             return false;
+                                         }
+                                     {
+                                         PBYTE pbNew = *(UNALIGNED PBYTE *)pbTarget;
+                                         DETOUR_TRACE(("%p->%p: skipped over import table.\n", pbCode, pbNew));
+                                         pbCode = pbNew;
+                                     }
+                                 }
+                      }
+
+            // 至此pbTarget和pDetour均获取完毕, 其中:
+            // pbTarget 是原始(目标)函数的入口地址 
+            // pDetour 是pbTarget被hook之后新的入口地址
+
+            // Don't follow a jump if its destination is the target function.
+            // This happens when the detour does nothing other than call the target.
+            if (pDetour == (PVOID)pbTarget) {
+                if (s_fIgnoreTooSmall) {
+                    goto stop;
+                }
+                else {
+                    DETOUR_BREAK();
+                    goto fail;
+                }
+            }
+
+            // 这里看起来是通过函数的出参保存摘出opcode, 实际原始函数和期望hook函数的调用地址
+            if (ppRealTarget != NULL) {
+                *ppRealTarget = pbTarget;
+            }
+            if (ppRealDetour != NULL) {
+                *ppRealDetour = pDetour;
+            }
+
+                          // detour_alloc_trampoline()这里应该是尝试寻找可用的区域
+                          // 如果有可用的区域, 那么就填充PDETOUR_TRAMPOLINE结构体(整个结构体先填充一个无效值0xcc) 
+            pTrampoline = detour_alloc_trampoline(pbTarget); (static PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget))
+                          |
+                          |
+                          |
+                          // We have to place trampolines within +/- 2GB of target.
+                          
+                          // 这里应该是找一个目标函数2GB的上下界
+                          PDETOUR_TRAMPOLINE pLo;
+                          PDETOUR_TRAMPOLINE pHi;
+                          detour_find_jmp_bounds(pbTarget, &pLo, &pHi);
+                              |
+                              |
+                              |
+                              ULONG_PTR lo = detour_2gb_below((ULONG_PTR)pbCode);
+                                             |
+                                             |
+                                             |
+                                             return (address > (ULONG_PTR)0x7ff80000) ? address - 0x7ff80000 : 0x80000;
+                              ULONG_PTR hi = detour_2gb_above((ULONG_PTR)pbCode);
+                                             |
+                                             |
+                                             |
+                                             return (address < (ULONG_PTR)0x80000000) ? address + 0x7ff80000 : (ULONG_PTR)0xfff80000;
+                              DETOUR_TRACE(("[%p..%p..%p]\n", lo, pbCode, hi));
+
+                              *ppLower = (PDETOUR_TRAMPOLINE)lo;
+                              *ppUpper = (PDETOUR_TRAMPOLINE)hi;
+
+                              ......
+                              found_region:
+                                  pTrampoline = s_pRegion->pFree;
+
+                                  if (pTrampoline < pLo || pTrampoline > pHi)
+                                      return __null;
+                                  
+                                  s_pRegion->pFree = (PDETOUR_TRAMPOLINE)pTrampoline->pbRemain;
+                                  memset(pTrampoline, 0xcc, sizeof(*pTrampoline));
+                                  return pTrampoline;
+
+            // 至此需要保存hook相关信息的结构体内存申请完毕, 开始逐个给该结构体赋值
+            DETOUR_TRACE(("detours: pbTramp=%p, pDetour=%p\n", pTrampoline, pDetour));
+
+            // 先给_DETOUR_ALIGN _DETOUR_TRAMPOLINE::rAlign[8]赋值 // instruction alignment array., 执行对齐数组
+                   |
+                   struct _DETOUR_ALIGN
+                   {
+                       BYTE    obTarget : 3;
+                       BYTE    obTrampoline : 5;
+                   };
+            memset(pTrampoline->rAlign, 0, sizeof(pTrampoline->rAlign));
+
+            // Determine the number of movable target instructions. //确定可移动目标指令的数量
+            {
+                PBYTE pbSrc = pbTarget;
+                PBYTE pbTrampoline = pTrampoline->rbCode; // BYTE rbCode[128]; // target code + jmp to pbRemain
+                PBYTE pbPool = pbTrampoline + sizeof(pTrampoline->rbCode);
+                ULONG cbTarget = 0;
+                ULONG cbJump = SIZE_OF_JMP; // DETOURS_X64 was 5, enum {SIZE_OF_JMP = 5};
+                ULONG nAlign = 0;
+            }
+
+
+
+    if (error == NO_ERROR)
+    {
+        DetourSetCallbackForLocalHook(pTrampoline, InCallback);
+    }
+    error = DetourTransactionCommit();
+    if (OutHandle != NULL && error == NO_ERROR)
+    {
+        TRACED_HOOK_HANDLE handle = DetourGetHookHandleForFunction(pTrampoline);
+        if (handle != NULL) {
+            OutHandle->Link = handle->Link;
+        }
+    }
+THROW_OUTRO:
+
+    return error;
+}
+
+可以看到trampoline_exit除了保证堆栈平衡以及还原寄存器的值之外
+最主要的就是最后一句jmpq *(%raw), 即trampoline_exit统一用rax作为跳转地址
+000000000000e843 <trampoline_exit>:
+    e843:	48 81 c4 a0 00 00 00 	add    $0xa0,%rsp
+    e84a:	0f 10 7c 24 80       	movups -0x80(%rsp),%xmm7
+    e84f:	0f 10 74 24 90       	movups -0x70(%rsp),%xmm6
+    e854:	0f 10 6c 24 a0       	movups -0x60(%rsp),%xmm5
+    e859:	0f 10 64 24 b0       	movups -0x50(%rsp),%xmm4
+    e85e:	0f 10 5c 24 c0       	movups -0x40(%rsp),%xmm3
+    e863:	0f 10 54 24 d0       	movups -0x30(%rsp),%xmm2
+    e868:	0f 10 4c 24 e0       	movups -0x20(%rsp),%xmm1
+    e86d:	0f 10 44 24 f0       	movups -0x10(%rsp),%xmm0
+    e872:	41 59                	pop    %r9
+    e874:	41 58                	pop    %r8
+    e876:	59                   	pop    %rcx
+    e877:	5a                   	pop    %rdx
+    e878:	5e                   	pop    %rsi
+    e879:	5f                   	pop    %rdi
+    e87a:	48 8b 64 24 08       	mov    0x8(%rsp),%rsp
+    e87f:	ff 20                	jmpq   *(%rax)
+可以理解为trampoline_exit除了保证堆栈平衡(貌似也没保证, 少了2个8字节) 剩下的就是再次jmp到rax寄存器所保存的地址内
+所以任何准备调用trampoline_exit的上下文, 在调用之前应该都要把rax赋值为一个地址, 让rip跳到该地址后仍然可以正确的执行后续指令
+
+其内联汇编如下所示
+__asm__
+(R"(.intel_syntax
+    ......
+    ## Remove alignment trick: https://stackoverflow.com/a/9600102
+    mov rsp, [rsp + 8]
+    jmp qword ptr [rax] ## ATTENTION: In case of hook handler we will return to call_net_outro, otherwise to the caller...
+)");
+
+
+分析下trampoline_template_x64相关调用
+首先定义了若干8字节的区间, 应该主要是存储函数地址
+NETIntro:
+OldProc: // 未被hook的原始api?
+NewProc: // hook之后的api?
+NETOutro:
+IsExecutedPtr: 
+
+trampoline_template_x64:
+    // 将rsp和rsppush之后所指向的内暂时放到栈上保护
+    pus rsp
+    push qword ptr [rsp]
+    and rsp, 0xFFFFFFFFFFFFFFF0 // 低4bit清空
+
+    // rsp的值塞到rax里面, 同时pushxx保护各种参数
+    mov rax, rsp
+    push rdi
+    push rsi
+    push rdx
+    push rcx
+    push r8
+    push r9
+
+    // 暂存xmm0~xmm7寄存器的值
+    sub rsp, 8 * 16 ## space for SSE registers
+    movups [rsp + 7 * 16], xmm0
+    movups [rsp + 6 * 16], xmm1
+    movups [rsp + 5 * 16], xmm2
+    movups [rsp + 4 * 16], xmm3
+    movups [rsp + 3 * 16], xmm4
+    movups [rsp + 2 * 16], xmm5
+    movups [rsp + 1 * 16], xmm6
+    movups [rsp + 0 * 16], xmm7
+
+    // 开辟32个字节留给(4个)函数地址
+    sub rsp, 32## shadow space for method calls
+
+    lea rax, [rip + IsExecutedPtr] ## rax save the address of [IsExecutedPtr]?
+    mov rax, [rax] ## rax save the value of [IsExecutedPtr]
+    .byte 0xF0 ## interlocked increment execution counter
+    inc qword ptr [rax] ## add rax, 8; rax will save the [trampoline_template_x64] address?
+
+## is a user handler available? 
+    cmp qword ptr [rip + NewProc], 0
+
+    .byte 0x3E ## branch usually taken
+    # if [ZF] not zero, jump the address, mean [NewProc] not zero
+    jne call_net_entry -----------------------------------------------------|
+                                                                            | 
+    lea rax, [rip + IsExecutedPtr]                                          |
+    mov rax, [rax] ## rax save the value of [IsExecutedPtr]                 |
+    .byte 0xF0 ## interlocked decrement execution counter                   |
+    dec qword ptr [rax] ## rax -= 8, value is the address of [NETOutro]     |
+                                                                            |
+    ## save the [OldProc] address to rax, use for [trampoline_exit]         |
+    lea rax, [rip + OldProc]                                                |
+    jmp trampoline_exit                                                     |
+                                                                            |
+                                                                            |
+        call_net_entry -----------------------------------------------------|
+        lea rdi, [rip + IsExecutedPtr + 8] ## Hook handle (only a position hint), [trampoline_template_x64]
+        ## Here we are under the alignment trick.
+        mov rdx, [rsp + 32 + 8 * 16 + 6 * 8 + 8] ## rdx = original rsp, is pushed rsp (address of return address)
+        mov rsi, [rdx] ## return address (value stored in original rsp) rsp在进入到当前堆栈前就已经保存了一个地址在rsp里面?
+        call qword ptr [rip + NETIntro] ## Hook->NETIntro(Hook, RetAddr, InitialRSP)
+                                        ## 感觉NETIntro()返回值可能是个bool, 并且可能用到了rdi, rsi以及某个作为函数参数
+                                        ## 因为接下来用到了返回值rax, test rax, rax, 所以NETIntro()看起来更像是shouleCallOriginalFunction()
+
+        ## should call original method?
+        test rax, rax
+        .byte 0x3E ## branch usually taken
+        // [ZF] not zero, jmp call_hook_handler
+        jne call_hook_handler --------------------------------------------------|
+                                                                                | 
+        (not zero)                                                              |
+        ## call original method                                                 |
+        lea rax, [rip + IsExecutedPtr]                                          |
+        mov rax, [rax]                                                          |
+        .byte 0xF0 ## interlocked decrement execution counter                   |
+        dec qword ptr [rax]                                                     |
+                                                                                | 
+        lea rax, [rip + OldProc]                                                |
+        jmp trampoline_exit                                                     |
+                                                                                |
+            call_hook_handler --------------------------------------------------|
+            ## adjust return address, 这里看起来像是把入口的处的地址替换为了[call_net_outro]
+            lea rax, [rip + call_net_outro]
+            ## Here we are under the alignment trick.
+            mov r9, [rsp + 32 + 8 * 16 + 6 * 8 + 8] ## r9 = original rsp
+            mov qword ptr [r9], rax
+
+            ## call hook handler, 在退出之前直接跳转到NewProc的地址
+            lea rax, [rip + NewProc]
+            jmp trampoline_exit
+
+
+Q & A
+1. bus error
+// 对比下新增的代码中用宏DETOURS_X64包含与非包含代码, 是否是导致mip64平台总线错误的原因
+// git log:fix build error on mips os
+// TODO......
+
+2. hook相关问题
+a> 函数貌似只能被hook一次?
+如下所示, sleep_detour()为hook后的入口点, 那么每调用一次对应的hook函数(sleep()), sleep_detour应该会被调用一次
+但实际上貌似是调用了一次
+unsigned int sleep_detour(unsigned int seconds)
+{
+    LOG(INFO) << "detours_test: Called sleep_detour";
+    return sleep(seconds);
+}
+
+DetourInstallHook((void*)sleep, (void*)sleep_detour, &sleep_detour_callback, sleep_detour_handle);
+
+VOID* test_runner(void*)
+{
+    LOG(INFO) << "detours_test: Calling sleep for 1 second";
+    sleep(1);
+    LOG(INFO) << "detours_test: Calling sleep again for 2 seconds";
+    sleep(2);
+    
+    LOG(INFO)  << "detours_test: Done sleeping\n";
+
+    return NULL;
+}
+
+日志如下所示, 可以看到在第一次调用sleep的hook之后(Called sleep_detour)
+在test_runner中再次调用sleep(2)并未再次进入sleep_detour()
+I1019 11:08:13.535717 32052 main.cpp:32] detours_test: Calling sleep for 1 second
+I1019 11:08:13.535732 32052 detours.cpp:1731] Barrier Intro InHandle=0x40400ed0, InRetAddr=0x401583, InAddrOfRetAddr=0x7f53aaba8eb8
+I1019 11:08:13.535748 32052 main.cpp:11] detours_test: Called sleep_detour
+I1019 11:08:13.535781 32052 detours.cpp:1731] Barrier Intro InHandle=0x40400ed0, InRetAddr=0x40130e, InAddrOfRetAddr=0x7f53aaba8e78
+I1019 11:08:14.536044 32052 detours.cpp:1848] Barrier Outro InHandle=0x40400ed0, InAddrOfRetAddr=0x7f53aaba8eb8
+I1019 11:08:14.536146 32052 main.cpp:34] detours_test: Calling sleep again for 2 seconds
+I1019 11:08:16.536345 32052 main.cpp:37] detours_test: Done sleeping
+
+b> 在外面调用一次hook后彻底不hook了?
+主函数中加入如下语句
+{
+    LOG(INFO) << "main: calling [sleep()] with 1 seconds before test thread";
+    sleep(1);
+}
+
+I1019 11:22:50.644814  3724 main.cpp:74] main: calling [sleep()] with 1 seconds before test thread
+I1019 11:22:50.644834  3724 detours.cpp:1731] Barrier Intro InHandle=0x40400ed0, InRetAddr=0x40182d, InAddrOfRetAddr=0x7ffce8251198
+I1019 11:22:51.645325  3729 detours.cpp:1731] Barrier Intro InHandle=0x404012d8, InRetAddr=0x4014f7, InAddrOfRetAddr=0x7f435ee2feb8
+I1019 11:22:51.645583  3729 main.cpp:21] detours_test: Detoured function 'test_detour_b' -> function 'test_detour_a' with params: 2, 3, 4, 5, 6
+I1019 11:22:51.645613  3729 detours.cpp:1731] Barrier Intro InHandle=0x404012d8, InRetAddr=0x4014a2, InAddrOfRetAddr=0x7f435ee2fe68
+I1019 11:22:51.645628  3729 main.cpp:16] detours_test: Called test_detour_b
+I1019 11:22:51.645642  3729 detours.cpp:1848] Barrier Outro InHandle=0x404012d8, InAddrOfRetAddr=0x7f435ee2feb8
+I1019 11:22:51.645655  3729 main.cpp:29] detours_test: Function 'test_detour_b' returned 4
+I1019 11:22:51.645668  3729 main.cpp:32] detours_test: Calling sleep for 1 second
+I1019 11:22:52.645795  3729 main.cpp:34] detours_test: Calling sleep again for 2 seconds
+I1019 11:22:54.645989  3729 main.cpp:37] detours_test: Done sleeping
+hello asm
+

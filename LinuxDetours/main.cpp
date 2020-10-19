@@ -4,6 +4,8 @@
 #include <glog/logging.h>
 #include <iostream>
 
+#define USE_CUSTOM_FUNCTION 0
+
 unsigned int sleep_detour(unsigned int seconds)
 {
     LOG(INFO) << "detours_test: Called sleep_detour";
@@ -23,7 +25,9 @@ unsigned int test_detour_a(unsigned int seconds, unsigned int a, unsigned int b,
 
 VOID* test_runner(void*)
 {
+#if USE_CUSTOM_FUNCTION
     LOG(INFO) << "detours_test: Function 'test_detour_b' returned " << test_detour_b(1, 2, 3, 4, 5, 6);
+#endif
 
     LOG(INFO) << "detours_test: Calling sleep for 1 second";
     sleep(1);
@@ -44,6 +48,7 @@ int test_glog(char * argv)
     return 1;
 }
 
+
 int main(int argc, char * argv[])
 {
     test_glog(argv[0]);
@@ -51,26 +56,36 @@ int main(int argc, char * argv[])
     DetourBarrierProcessAttach();
     DetourCriticalInitialize();
 
-    LONG test_detour_callback = 0;
+    ULONG ret = 0;
+
     LONG sleep_detour_callback = 0;
-    TRACED_HOOK_HANDLE test_detour_handle = new HOOK_TRACE_INFO();
     TRACED_HOOK_HANDLE sleep_detour_handle = new HOOK_TRACE_INFO();    
-
-    DetourInstallHook((void*)test_detour_b, (void*)test_detour_a, &test_detour_callback, test_detour_handle);
     DetourInstallHook((void*)sleep, (void*)sleep_detour, &sleep_detour_callback, sleep_detour_handle);
-
-    ULONG ret = DetourSetExclusiveACL(new ULONG(), 1, (TRACED_HOOK_HANDLE)test_detour_handle);
     ret = DetourSetExclusiveACL(new ULONG(), 1, (TRACED_HOOK_HANDLE)sleep_detour_handle);
+
+#if USE_CUSTOM_FUNCTION
+    LONG test_detour_callback = 0;
+    TRACED_HOOK_HANDLE test_detour_handle = new HOOK_TRACE_INFO();
+    DetourInstallHook((void*)test_detour_b, (void*)test_detour_a, &test_detour_callback, test_detour_handle);
+    ret = DetourSetExclusiveACL(new ULONG(), 1, (TRACED_HOOK_HANDLE)test_detour_handle);
+#endif
+
+#if 0
+    LOG(INFO) << "main: calling [sleep()] with 1 seconds before test thread";
+    sleep(1);
+#endif
 
     pthread_t t;
     pthread_create(&t, NULL, test_runner, NULL);
     pthread_join(t, NULL);
 
-    DetourUninstallHook(test_detour_handle);
     DetourUninstallHook(sleep_detour_handle);
-
-    delete test_detour_handle;
     delete sleep_detour_handle;
+
+#if USE_CUSTOM_FUNCTION
+    delete test_detour_handle;
+    DetourUninstallHook(test_detour_handle);
+#endif
 
     sleep(1);
 

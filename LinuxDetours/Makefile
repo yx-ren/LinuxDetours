@@ -31,7 +31,8 @@ endif
 target_app = "linux_detours.test"
 linux_x64:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_X86) -D_AMD64_ -D_UNIX64 -o $(LIB_NAME)64.so	
-	$(CXX) $(CXX_EXE_FLAGS) main.cpp $(CXX_DEFINES)  -L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 \
+	$(CXX) $(CXX_EXE_FLAGS) main.cpp $(CXX_DEFINES) -L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 \
+		-Wl,-rpath=./ \
 		-o $(target_app)
 linux_arm:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_ARM) -mcpu=cortex-a5 -D_ARM_ -D_ARM32_ -o $(LIB_NAME)32.so
