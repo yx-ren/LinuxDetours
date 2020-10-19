@@ -2893,8 +2893,10 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
 
     std::string Trampoline_code = dumpHex((const char*)pbTrampoline, 32);
     std::string pbSrc_code = dumpHex((const char*)pbSrc, 32);
-    DETOUR_TRACE(("Trampoline_code:\n%s\n", Trampoline_code.c_str()));
-    DETOUR_TRACE(("pbSrc_code:\n%s\n", pbSrc_code.c_str()));
+    std::string pDetour_code = dumpHex((const char*)pDetour, 32);
+    DETOUR_TRACE(("Trampoline_code(%p):\n%s\n", pbTrampoline, Trampoline_code.c_str()));
+    DETOUR_TRACE(("pbSrc_code(%p):\n%s\n", pbSrc, pbSrc_code.c_str()));
+    DETOUR_TRACE(("pDetour_code(%p):\n%s\n", pDetour, pDetour_code.c_str()));
 
     while (cbTarget < cbJump) {
         PBYTE pbOp = pbSrc;
