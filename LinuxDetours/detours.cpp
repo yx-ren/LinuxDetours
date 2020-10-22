@@ -21,6 +21,8 @@
 
 #define NOTHROW
 
+#define __256MB_SIZE__       0x10000000
+
 std::string dumpHex(const char* buf, int len)
 {
     std::ostringstream oss;
@@ -102,6 +104,26 @@ inline ULONG_PTR detour_2gb_above(ULONG_PTR address)
     return (address < (ULONG_PTR)0x80000000) ? address + 0x7ff80000 : (ULONG_PTR)0xfff80000;
 #endif
 }
+
+
+#ifdef DETOURS_MIPS64
+inline ULONG_PTR find_base_addreess(ULONG_PTR address)
+{
+    // TODO......
+    return address;
+}
+
+// 0x10000000 == 256MB
+inline ULONG_PTR detour_256mb_below(ULONG_PTR address)
+{
+    return find_base_addreess(address) - __256MB_SIZE__;
+}
+
+inline ULONG_PTR detour_256mb_above(ULONG_PTR address)
+{
+    return find_base_addreess(address) + __256MB_SIZE__;
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////// X86.
 //
@@ -683,20 +705,20 @@ inline void detour_find_jmp_bounds(PBYTE pbCode,
     PDETOUR_TRAMPOLINE *ppLower,
     PDETOUR_TRAMPOLINE *ppUpper)
 {
-    // We have to place trampolines within +/- 2GB of code.
-    ULONG_PTR lo = detour_2gb_below((ULONG_PTR)pbCode);
-    ULONG_PTR hi = detour_2gb_above((ULONG_PTR)pbCode);
+    // We have to place trampolines within +/- 256MB of code.
+    ULONG_PTR lo = detour_256mb_below((ULONG_PTR)pbCode);
+    ULONG_PTR hi = detour_256mb_above((ULONG_PTR)pbCode);
     DETOUR_TRACE(("[%p..%p..%p]\n", lo, pbCode, hi));
 
-    // And, within +/- 2GB of relative jmp vectors.
+    // And, within +/- 256mb of relative jmp vectors.
     if (pbCode[0] == 0xff && pbCode[1] == 0x25) {   // jmp [+imm32]
         PBYTE pbNew = pbCode + 6 + *(UNALIGNED INT32 *)&pbCode[2];
 
         if (pbNew < pbCode) {
-            hi = detour_2gb_above((ULONG_PTR)pbNew);
+            hi = detour_256mb_above((ULONG_PTR)pbNew);
         }
         else {
-            lo = detour_2gb_below((ULONG_PTR)pbNew);
+            lo = detour_256mb_below((ULONG_PTR)pbNew);
         }
         DETOUR_TRACE(("[%p..%p..%p] [+imm32]\n", lo, pbCode, hi));
     }
@@ -705,10 +727,10 @@ inline void detour_find_jmp_bounds(PBYTE pbCode,
         PBYTE pbNew = pbCode + 5 + *(UNALIGNED INT32 *)&pbCode[1];
 
         if (pbNew < pbCode) {
-            hi = detour_2gb_above((ULONG_PTR)pbNew);
+            hi = detour_256mb_above((ULONG_PTR)pbNew);
         }
         else {
-            lo = detour_2gb_below((ULONG_PTR)pbNew);
+            lo = detour_256mb_below((ULONG_PTR)pbNew);
         }
         DETOUR_TRACE(("[%p..%p..%p] +imm32\n", lo, pbCode, hi));
     }
@@ -1447,56 +1469,13 @@ static PVOID detour_alloc_region_from_hi(PBYTE pbLo, PBYTE pbHi)
             return pv;
         }
         pbTry += DETOUR_REGION_SIZE;
-
-        //else {
-        //pbTry = detour_alloc_round_up_to_region((PBYTE)mbi.BaseAddress + mbi.RegionSize);
-        //}
-    }
-    /*
-    DETOUR_TRACE((" Looking for free region in %p..%p from %p:\n", pbLo, pbHi, pbTry));
-
-    for (; pbTry > pbLo;) {
-    MEMORY_BASIC_INFORMATION mbi;
-
-    DETOUR_TRACE(("  Try %p\n", pbTry));
-    if (pbTry >= s_pSystemRegionLowerBound && pbTry <= s_pSystemRegionUpperBound) {
-    // Skip region reserved for system DLLs, but preserve address space entropy.
-    pbTry -= 0x08000000;
-    continue;
     }
 
-    ZeroMemory(&mbi, sizeof(mbi));
-    if (!VirtualQuery(pbTry, &mbi, sizeof(mbi))) {
-    break;
-    }
-
-    DETOUR_TRACE(("  Try %p => %p..%p %6x\n",
-    pbTry,
-    mbi.BaseAddress,
-    (PBYTE)mbi.BaseAddress + mbi.RegionSize - 1,
-    mbi.State));
-
-    if (mbi.State == MEM_FREE && mbi.RegionSize >= DETOUR_REGION_SIZE) {
-
-    PVOID pv = VirtualAlloc(pbTry,
-    DETOUR_REGION_SIZE,
-    MEM_COMMIT|MEM_RESERVE,
-    PAGE_EXECUTE_READWRITE);
-    if (pv != NULL) {
-    return pv;
-    }
-    pbTry -= DETOUR_REGION_SIZE;
-    }
-    else {
-    pbTry = detour_alloc_round_down_to_region((PBYTE)mbi.AllocationBase
-    - DETOUR_REGION_SIZE);
-    }
-    }
-    */
     return NULL;
 }
 
-static PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget)
+#ifndef DETOURS_MIPS64
+PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget)
 {
     // We have to place trampolines within +/- 2GB of target.
 
@@ -1596,6 +1575,89 @@ static PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget)
     DETOUR_TRACE(("Couldn't find available memory region!\n"));
     return NULL;
 }
+#else
+PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
+{
+    // We have to place trampolines within +/- 256MB of target.
+
+    PDETOUR_TRAMPOLINE pLo;
+    PDETOUR_TRAMPOLINE pHi;
+
+    detour_find_jmp_bounds(pbTarget, &pLo, &pHi);
+
+    PDETOUR_TRAMPOLINE pTrampoline = NULL;
+
+    // Insure that there is a default region.
+    if (s_pRegion == NULL && s_pRegions != NULL) {
+        s_pRegion = s_pRegions;
+    }
+
+    // First check the default region for an valid free block.
+    if (s_pRegion != NULL && s_pRegion->pFree != NULL &&
+        s_pRegion->pFree >= pLo && s_pRegion->pFree <= pHi) {
+
+    found_region:
+        pTrampoline = s_pRegion->pFree;
+        // do a last sanity check on region.
+        if (pTrampoline < pLo || pTrampoline > pHi) {
+            return NULL;
+        }
+        s_pRegion->pFree = (PDETOUR_TRAMPOLINE)pTrampoline->pbRemain;
+        memset(pTrampoline, 0xcc, sizeof(*pTrampoline));
+        return pTrampoline;
+    }
+
+    // Then check the existing regions for a valid free block.
+    for (s_pRegion = s_pRegions; s_pRegion != NULL; s_pRegion = s_pRegion->pNext) {
+        if (s_pRegion != NULL && s_pRegion->pFree != NULL &&
+            s_pRegion->pFree >= pLo && s_pRegion->pFree <= pHi) {
+            goto found_region;
+        }
+    }
+
+    // We need to allocate a new region.
+
+    // Round pbTarget down to 64KB block.
+    pbTarget = pbTarget - (PtrToUlong(pbTarget) & 0xffff);
+
+    PVOID pbTry = NULL;
+
+    // NB: We must always also start the search at an offset from pbTarget
+    //     in order to maintain ASLR entropy.
+
+    // Try anything below.
+    if (pbTry == NULL) {
+        pbTry = detour_alloc_region_from_hi((PBYTE)pLo, pbTarget);
+    }
+    // try anything above.
+    if (pbTry == NULL) {
+        pbTry = detour_alloc_region_from_lo(pbTarget, (PBYTE)pHi);
+    }
+
+    if (pbTry != NULL) {
+        s_pRegion = (DETOUR_REGION*)pbTry;
+        s_pRegion->dwSignature = DETOUR_REGION_SIGNATURE;
+        s_pRegion->pFree = NULL;
+        s_pRegion->pNext = s_pRegions;
+        s_pRegions = s_pRegion;
+        DETOUR_TRACE(("  Allocated region %p..%p\n\n",
+            s_pRegion, ((PBYTE)s_pRegion) + DETOUR_REGION_SIZE - 1));
+
+        // Put everything but the first trampoline on the free list.
+        PBYTE pFree = NULL;
+        pTrampoline = ((PDETOUR_TRAMPOLINE)s_pRegion) + 1;
+        for (int i = DETOUR_TRAMPOLINES_PER_REGION - 1; i > 1; i--) {
+            pTrampoline[i].pbRemain = pFree;
+            pFree = (PBYTE)&pTrampoline[i];
+        }
+        s_pRegion->pFree = (PDETOUR_TRAMPOLINE)pFree;
+        goto found_region;
+    }
+
+    DETOUR_TRACE(("Couldn't find available memory region!\n"));
+    return NULL;
+}
+#endif // end DETOURS_MIPS64
 
 static void detour_free_trampoline(PDETOUR_TRAMPOLINE pTrampoline)
 {

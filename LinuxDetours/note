@@ -562,4 +562,3 @@ I1019 11:22:51.645668  3729 main.cpp:32] detours_test: Calling sleep for 1 secon
 I1019 11:22:52.645795  3729 main.cpp:34] detours_test: Calling sleep again for 2 seconds
 I1019 11:22:54.645989  3729 main.cpp:37] detours_test: Done sleeping
 hello asm
-

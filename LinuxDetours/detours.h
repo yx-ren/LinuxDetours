@@ -715,6 +715,7 @@ BOOL DetourSetCodeModule##x(_In_ HMODULE hModule,                \
 //LONG DetourBarrierBeginStackTrace(PVOID* OutBackup);
 
 //LONG DetourBarrierEndStackTrace(PVOID InBackup);
+PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget);
 
 BOOL DetourIsValidHandle(
     TRACED_HOOK_HANDLE InTracedHandle,
