@@ -134,6 +134,11 @@ int main(int argc, char * argv[])
 {
     test_glog(argv[0]);
 
+    std::cout << "main() start long sleeping" << std::endl;
+    sleep(10000000);
+
+    return 0;
+
 #if 0
     auto trampoline = detour_alloc_trampoline((PBYTE)sleep);
     if (trampoline != NULL)
