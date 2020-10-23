@@ -708,9 +708,11 @@ inline void detour_find_jmp_bounds(PBYTE pbCode,
     // We have to place trampolines within +/- 256MB of code.
     ULONG_PTR lo = detour_256mb_below((ULONG_PTR)pbCode);
     ULONG_PTR hi = detour_256mb_above((ULONG_PTR)pbCode);
-    DETOUR_TRACE(("[%p..%p..%p]\n", lo, pbCode, hi));
+    DETOUR_TRACE(("[%p(-256MB)..%p..%p(+256MB)]\n", lo, pbCode, hi));
 
-    // And, within +/- 256mb of relative jmp vectors.
+
+#if 0
+    // And, within +/- 256MB of relative jmp vectors.
     if (pbCode[0] == 0xff && pbCode[1] == 0x25) {   // jmp [+imm32]
         PBYTE pbNew = pbCode + 6 + *(UNALIGNED INT32 *)&pbCode[2];
 
@@ -722,7 +724,7 @@ inline void detour_find_jmp_bounds(PBYTE pbCode,
         }
         DETOUR_TRACE(("[%p..%p..%p] [+imm32]\n", lo, pbCode, hi));
     }
-    // And, within +/- 2GB of relative jmp targets.
+    // And, within +/- 256MB of relative jmp targets.
     else if (pbCode[0] == 0xe9) {   // jmp +imm32
         PBYTE pbNew = pbCode + 5 + *(UNALIGNED INT32 *)&pbCode[1];
 
@@ -734,6 +736,7 @@ inline void detour_find_jmp_bounds(PBYTE pbCode,
         }
         DETOUR_TRACE(("[%p..%p..%p] +imm32\n", lo, pbCode, hi));
     }
+#endif
 
     *ppLower = (PDETOUR_TRAMPOLINE)lo;
     *ppUpper = (PDETOUR_TRAMPOLINE)hi;
@@ -1463,12 +1466,20 @@ static PVOID detour_alloc_region_from_hi(PBYTE pbLo, PBYTE pbHi)
 {
     PBYTE pbTry = detour_alloc_round_down_to_region(pbHi - DETOUR_REGION_SIZE);
     DETOUR_TRACE((" Looking for free region in %p..%p from %p:\n", pbLo, pbHi, pbTry));
-    for (; pbTry < pbHi;) {
+    //for (; pbTry < pbHi;) {
+    for (; pbTry > pbLo;) {
+        DETOUR_TRACE(("try to found memory [PROT_EXEC | PROT_READ | PROT_WRITE], start address:[%p], size:[0x%x]",
+                pbTry, DETOUR_REGION_SIZE));
         PVOID pv = mmap(pbTry, DETOUR_REGION_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (pv != NULL) {
+            DETOUR_TRACE(("Looking for free region successed!!! ,in %p..%p from %p, mapped area pointer %p\n",
+                    pbLo, pbHi, pbTry, pv));
             return pv;
         }
-        pbTry += DETOUR_REGION_SIZE;
+        else
+            DETOUR_TRACE((" Looking for free region failed, in %p..%p from %p\n", pbLo, pbHi, pbTry));
+        //pbTry += DETOUR_REGION_SIZE; // may be pbTry -= DETOUR_REGION_SIZE?
+        pbTry -= DETOUR_REGION_SIZE;
     }
 
     return NULL;
@@ -1579,10 +1590,12 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget)
 PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
 {
     // We have to place trampolines within +/- 256MB of target.
+    DETOUR_TRACE(("try to alloc trampoline for address:[%p]", pbTarget));
 
     PDETOUR_TRAMPOLINE pLo;
     PDETOUR_TRAMPOLINE pHi;
 
+    DETOUR_TRACE(("step 1: found -/+ 256MB boundary for address:[%p]\n\n", pbTarget));
     detour_find_jmp_bounds(pbTarget, &pLo, &pHi);
 
     PDETOUR_TRAMPOLINE pTrampoline = NULL;
@@ -1600,6 +1613,8 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
         pTrampoline = s_pRegion->pFree;
         // do a last sanity check on region.
         if (pTrampoline < pLo || pTrampoline > pHi) {
+            DETOUR_TRACE(("region alloc successed but trampoline was out boundary, trampoline:%p, low:%p, up:%p",
+                    pbTarget, pLo, pHi));
             return NULL;
         }
         s_pRegion->pFree = (PDETOUR_TRAMPOLINE)pTrampoline->pbRemain;
@@ -1618,19 +1633,23 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
     // We need to allocate a new region.
 
     // Round pbTarget down to 64KB block.
+    PBYTE origin_pbTarget = pbTarget;
     pbTarget = pbTarget - (PtrToUlong(pbTarget) & 0xffff);
+    DETOUR_TRACE(("step 2: Round pbTarget(%p) down to 64KB block, (%p - (%p & 0xffff)) => pbTarget(%p)\n\n", 
+                origin_pbTarget, origin_pbTarget, origin_pbTarget, pbTarget));
 
     PVOID pbTry = NULL;
 
-    // NB: We must always also start the search at an offset from pbTarget
-    //     in order to maintain ASLR entropy.
-
     // Try anything below.
+    DETOUR_TRACE(("step 3: try to found region for target(%p)", pbTarget));
     if (pbTry == NULL) {
+        DETOUR_TRACE(("step 3: try to found region from low address(%p) for target(%p)", pLo, pbTarget));
         pbTry = detour_alloc_region_from_hi((PBYTE)pLo, pbTarget);
     }
+
     // try anything above.
     if (pbTry == NULL) {
+        DETOUR_TRACE(("step 3: try to found region from high address(%p) for target(%p)", pHi, pbTarget));
         pbTry = detour_alloc_region_from_lo(pbTarget, (PBYTE)pHi);
     }
 

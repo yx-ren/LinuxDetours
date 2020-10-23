@@ -1,5 +1,6 @@
 #/bin/bash
 
+make -j4
 DUMP_SH="./dump_obj.sh"
 if [ ! -f $DUMP_SH ];then
     echo "file:[$DUMP_SH] not existed"
