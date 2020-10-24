@@ -126,7 +126,7 @@ static void __attribute__((constructor)) ctor()
                 std::vector<std::string> dylibs =
                 {
                     "/lib64/libc.so.6",
-                    "/lib64/libgtk.so"
+                    "/lib64/libgtk-3.so"
                 };
                 dump_dylibs(dylibs);
             }
