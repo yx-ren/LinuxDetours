@@ -22,7 +22,29 @@
 #include <string.h>
 #include <unistd.h>
 #include "detours.h"
+#include "statistics.h"
 using namespace std::placeholders;
+
+bool parse_dylibs_path(const std::string& filepath, std::vector<std::string>& dylibs_path)
+{
+    std::ifstream ifs(filepath);
+    if (!ifs.is_open())
+    {
+        std::cerr << "failed to open file:[" << filepath << "]" << std::endl;
+        return false;
+    }
+
+    std::string file_buf((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+    std::istringstream iss(file_buf);
+    std::string dylib_path;
+    while (iss >> dylib_path)
+    {
+        std::cout << dylib_path << std::endl;
+        dylibs_path.push_back(dylib_path);
+    }
+
+    return true;
+}
 
 bool exec_sh(const std::string& cmd, std::string& echo)
 {
@@ -88,30 +110,53 @@ bool get_dylib_functions(const std::string& dylib_path, std::map<std::string, vo
 
 void dump_dylibs(const std::vector<std::string>& dylibs)
 {
+    std::map<std::string, DetourDetectedResults> dylibs_detected_results;
     for (const auto& dylib : dylibs)
     {
         std::map<std::string, void*> functions;
+        DetourDetectedResults detected_results;
         if (get_dylib_functions(dylib, functions))
         {
             LOG(INFO) << "get dylib:[" << dylib << "] info" << std::endl;
             for (const auto fun : functions)
             {
-                LOG(INFO) << "    " << "fun:[" << fun.first << "], entry point:[" << std::hex << fun.second << "]" << std::endl;
+                //LOG(INFO) << "    " << "fun:[" << fun.first << "()], entry point:[" << std::hex << fun.second << "]" << std::endl;
                 auto trampoline = detour_alloc_trampoline((PBYTE)fun.second);
 
                 if (trampoline != NULL)
-                    LOG(INFO) << "call detour_alloc_trampoline() success for fun" << fun.first << "()"
+                    LOG(INFO) << "call detour_alloc_trampoline() success for fun: " << fun.first << "() "
                         << "trampoline address:[" << std::hex << trampoline << "]";
                 else
-                    LOG(INFO) << "call detour_alloc_trampoline() failed for fun" << fun.first << "()";
+                    LOG(INFO) << "call detour_alloc_trampoline() failed for fun: " << fun.first << "()";
+
+                FunctionDetectedResult result;
+                result.mTrampolineAddress = trampoline;
+                result.mEntryPoint = fun.second;
+                result.mName = fun.first;
+                detected_results.mResults.push_back(result);
             }
         }
+
+        dylibs_detected_results.insert(std::make_pair(dylib, detected_results));
     }
+
+    LOG(INFO) << "-------------------- dump begin the statistics info --------------------";
+    for (const auto& dylib_result : dylibs_detected_results)
+    {
+        std::ostringstream oss;
+        const DetourDetectedResults& results = dylib_result.second;
+        oss << "dylib:[" << dylib_result.first << "], "
+            << "symbol table total has functions:[" << results.size() << "], "
+            << "successed alloc:[" << results.alloc_size() << "], "
+            << "failed alloc:[" << results.failed_size() << "]";
+
+            LOG(INFO) << oss.str();
+    }
+    LOG(INFO) << "-------------------- dump end the statistics info --------------------";
 }
 
 static void __attribute__((constructor)) ctor()
 {
-#if 1
     int sleep_seconds = 5;
     auto thread_function = std::bind([](int sleep_sec)
             {
@@ -123,19 +168,23 @@ static void __attribute__((constructor)) ctor()
                     left_sec--;
                 }
 
-                std::vector<std::string> dylibs =
+                const char* libs_path = "/home/renyunxiang/work/github/LinuxDetours/LinuxDetours/config/dylibs";
+                std::vector<std::string> dylibs;
+                if (!parse_dylibs_path(libs_path, dylibs))
                 {
-                    "/lib64/libc.so.6",
-                    "/lib64/libgtk-3.so"
-                };
+                    std::cerr << "call parse_dylibs_path() failed" << std::endl;
+                    return;
+                }
+
                 dump_dylibs(dylibs);
+
+                exit(0);
             }
             , sleep_seconds
             );
 
     std::thread t1(thread_function);
     t1.detach();
-#endif
 
-    printf("FFFFFFFFFFFHHHHHAHA\n");
+    printf("-------------------- quit from [__attribute__((constructor)) ctor()] --------------------\n");
 }

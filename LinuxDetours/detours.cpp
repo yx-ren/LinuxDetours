@@ -36,6 +36,34 @@ std::string dumpHex(const char* buf, int len)
     return oss.str();
 }
 
+std::string toMB(uint64_t size)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(2) << (float)size / 1024 / 1024 << " MB";
+    return oss.str();
+}
+
+std::string calculteOffset(uint64_t base, uint64_t lower, uint64_t upper, uint64_t abs_address)
+{
+    uint64_t offset = 0;
+    bool was_blow;
+    if ((uint64_t)abs_address < (uint64_t)lower)
+    {
+        offset = (uint64_t)base - (uint64_t)abs_address;
+        was_blow = true;
+    }
+    else if ((uint64_t)abs_address > (uint64_t)upper)
+    {
+        offset = (uint64_t)abs_address - (uint64_t)base;
+        was_blow = false;
+    }
+
+    std::ostringstream oss;
+    oss << (was_blow ? "-" : "+") << (toMB(offset));
+
+    return oss.str();
+}
+
 //////////////////////////////////////////////////////////////////////////////
 //
 struct _DETOUR_ALIGN
@@ -1411,7 +1439,15 @@ static PVOID detour_alloc_region_from_lo(PBYTE pbLo, PBYTE pbHi)
     for (; pbTry < pbHi;) {
         PVOID pv = mmap(pbTry, DETOUR_REGION_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (pv != NULL) {
+            DETOUR_TRACE(("detour_alloc_region_from_lo(), call mmap() ok, Looking for free region successed!!!,"
+                    "in %p..%p from %p, mapped area pointer %p\n",
+                    pbLo, pbHi, pbTry, pv));
             return pv;
+        }
+        else
+        {
+            DETOUR_TRACE(("detour_alloc_region_from_lo() call mmap() failed, Looking for free region failed!!!, "
+                    "in %p..%p from %p\n", pbLo, pbHi, pbTry));
         }
         pbTry += DETOUR_REGION_SIZE;
 
@@ -1472,12 +1508,16 @@ static PVOID detour_alloc_region_from_hi(PBYTE pbLo, PBYTE pbHi)
                 pbTry, DETOUR_REGION_SIZE));
         PVOID pv = mmap(pbTry, DETOUR_REGION_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (pv != NULL) {
-            DETOUR_TRACE(("Looking for free region successed!!! ,in %p..%p from %p, mapped area pointer %p\n",
-                    pbLo, pbHi, pbTry, pv));
+            DETOUR_TRACE(("detour_alloc_round_down_to_region() call mmap() ok, Looking for free region successed!!!, "
+                    "in %p..%p from %p, mapped area pointer %p\n",
+                     pbLo, pbHi, pbTry, pv));
             return pv;
         }
         else
-            DETOUR_TRACE((" Looking for free region failed, in %p..%p from %p\n", pbLo, pbHi, pbTry));
+        {
+            DETOUR_TRACE(("detour_alloc_round_down_to_region() call mmap() failed, Looking for free region failed!!!, "
+                    "in %p..%p from %p\n", pbLo, pbHi, pbTry));
+        }
         //pbTry += DETOUR_REGION_SIZE; // may be pbTry -= DETOUR_REGION_SIZE?
         pbTry -= DETOUR_REGION_SIZE;
     }
@@ -1590,12 +1630,12 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget)
 PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
 {
     // We have to place trampolines within +/- 256MB of target.
-    DETOUR_TRACE(("try to alloc trampoline for address:[%p]", pbTarget));
+    DETOUR_TRACE(("trigger detour_alloc_trampoline(), target address:[%p]", pbTarget));
 
     PDETOUR_TRAMPOLINE pLo;
     PDETOUR_TRAMPOLINE pHi;
 
-    DETOUR_TRACE(("step 1: found -/+ 256MB boundary for address:[%p]\n\n", pbTarget));
+    DETOUR_TRACE(("step 1: found -/+ 256MB boundary for address:[%p]\n", pbTarget));
     detour_find_jmp_bounds(pbTarget, &pLo, &pHi);
 
     PDETOUR_TRAMPOLINE pTrampoline = NULL;
@@ -1612,9 +1652,13 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
     found_region:
         pTrampoline = s_pRegion->pFree;
         // do a last sanity check on region.
-        if (pTrampoline < pLo || pTrampoline > pHi) {
-            DETOUR_TRACE(("region alloc successed but trampoline was out boundary, trampoline:%p, low:%p, up:%p",
-                    pbTarget, pLo, pHi));
+        if ((uint64_t)pTrampoline < (uint64_t)pLo || (uint64_t)pTrampoline > (uint64_t)pHi) {
+            DETOUR_TRACE(("region alloc successed but trampoline address out of boundary, "
+                    "target:%p, trampoline:%p, low:%p, up:%p, "
+                    "offset:[%s]"
+                    , pbTarget, pTrampoline, pLo, pHi
+                    , (calculteOffset((uint64_t)pbTarget, (uint64_t)pLo, (uint64_t)pHi, (uint64_t)pTrampoline)).c_str()
+                    ));
             return NULL;
         }
         s_pRegion->pFree = (PDETOUR_TRAMPOLINE)pTrampoline->pbRemain;
@@ -1635,13 +1679,13 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
     // Round pbTarget down to 64KB block.
     PBYTE origin_pbTarget = pbTarget;
     pbTarget = pbTarget - (PtrToUlong(pbTarget) & 0xffff);
-    DETOUR_TRACE(("step 2: Round pbTarget(%p) down to 64KB block, (%p - (%p & 0xffff)) => pbTarget(%p)\n\n", 
+    DETOUR_TRACE(("step 2: Round pbTarget(%p) down to 64KB block, (%p - (%p & 0xffff)) => pbTarget(%p)\n", 
                 origin_pbTarget, origin_pbTarget, origin_pbTarget, pbTarget));
 
     PVOID pbTry = NULL;
 
     // Try anything below.
-    DETOUR_TRACE(("step 3: try to found region for target(%p)", pbTarget));
+    //DETOUR_TRACE(("step 3: try to found region for target(%p)", pbTarget));
     if (pbTry == NULL) {
         DETOUR_TRACE(("step 3: try to found region from low address(%p) for target(%p)", pLo, pbTarget));
         pbTry = detour_alloc_region_from_hi((PBYTE)pLo, pbTarget);

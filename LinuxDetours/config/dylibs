@@ -1,0 +1,7 @@
+/lib64/libc.so.6
+/usr/lib64/libgtk-3.so
+/usr/lib64/libgio-2.0.so
+/usr/lib64/libglib-2.0.so
+/usr/lib64/libgmodule-2.0.so
+/usr/lib64/libgobject-2.0.so
+/usr/lib64/libgthread-2.0.so
