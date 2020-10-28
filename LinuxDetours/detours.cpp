@@ -22,6 +22,7 @@
 #define NOTHROW
 
 #define __256MB_SIZE__       0x10000000
+#define __IS_OUT_BOUNDARY__(low, val, up) (( (val) < (low) ) || ( (val) > (up) ))
 
 std::string dumpHex(const char* buf, int len)
 {
@@ -1685,10 +1686,21 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
     PVOID pbTry = NULL;
 
     // Try anything below.
-    //DETOUR_TRACE(("step 3: try to found region for target(%p)", pbTarget));
     if (pbTry == NULL) {
         DETOUR_TRACE(("step 3: try to found region from low address(%p) for target(%p)", pLo, pbTarget));
         pbTry = detour_alloc_region_from_hi((PBYTE)pLo, pbTarget);
+
+#if 0
+        if (pbTry != NULL && __IS_OUT_BOUNDARY__(pLo, pbTry, pHi))
+        {
+            DETOUR_TRACE(("step 3: found region(%p) from low address(%p) for target(%p), "
+                        "but out of boundary(offset:%s), try to found from high address"
+                        , pbTry, pLo, pbTarget
+                        , (calculteOffset((uint64_t)pbTarget, (uint64_t)pLo, (uint64_t)pHi, (uint64_t)pbTry)).c_str()
+                        ));
+            pbTry = NULL;
+        }
+#endif
     }
 
     // try anything above.

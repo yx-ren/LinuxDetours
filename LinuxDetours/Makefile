@@ -9,7 +9,7 @@ CXX_DEFINES = -lpthread -ldl -lglog
 SOURCES = barrier.cpp detours.cpp disasm.cpp plthook_elf.cpp
 #PREPROCESS = $(CXX) -E detours.cpp -o detours.E
 
-HOOK_SOURCE_FILES = hook.c
+HOOK_SOURCE_FILES = hook.c statistics.cpp DetourDetector.cpp
 
 TRAMPOLINE_ARM = trampoline_arm.cpp
 TRAMPOLINE_X86 = trampoline_x86.cpp
