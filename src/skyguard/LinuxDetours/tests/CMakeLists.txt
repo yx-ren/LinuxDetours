@@ -1,0 +1,13 @@
+SET (TARGET detour.test)
+FILE(GLOB HEADERS
+    "*.h"
+    )
+
+FILE(GLOB SOURCES
+    "*.cpp"
+    )
+
+ADD_EXECUTABLE(${TARGET} ${HEADERS} ${SOURCES})
+ADD_DEPENDENCIES(${TARGET} detours)
+TARGET_LINK_LIBRARIES(${TARGET} detours)
+TARGET_LINK_LIBRARIES(${TARGET} -lglog -ldl)
