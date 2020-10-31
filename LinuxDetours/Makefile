@@ -41,6 +41,10 @@ linux_x64:
 		-Wl,-rpath=./ \
 		-o $(target_app)
 	$(CXX) -E detours.cpp -D_AMD64_ -D_UNIX64 -o detours.E
+	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(HOOK_SOURCE_FILES) -D_AMD64_ -D_UNIX64 -o hook.so \
+		-L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 \
+		-Wl,-rpath=/usr/local/lib/ \
+		-Wl,-rpath=./
 linux_arm:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_ARM) -mcpu=cortex-a5 -D_ARM_ -D_ARM32_ -o $(LIB_NAME)32.so
 linux_arm64:

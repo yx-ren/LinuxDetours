@@ -134,51 +134,10 @@ int main(int argc, char * argv[])
 {
     test_glog(argv[0]);
 
+#if 0
     std::cout << "main() start long sleeping" << std::endl;
     sleep(10000000);
-
-    return 0;
-
-#if 0
-    auto trampoline = detour_alloc_trampoline((PBYTE)sleep);
-    if (trampoline != NULL)
-        LOG(INFO) << "call detour_alloc_trampoline() success for sleep()";
-    else
-        LOG(INFO) << "call detour_alloc_trampoline() failed for sleep()";
-
-    return 0;
-#else
-    {
-        std::vector<std::string> dylibs =
-        {
-            "/lib64/libc.so.6",
-            "/lib64/libgtk.so"
-        };
-
-        for (const auto& dylib : dylibs)
-        {
-            std::map<std::string, void*> functions;
-            if (get_dylib_functions(dylib, functions))
-            {
-                LOG(INFO) << "get dylib:[" << dylib << "] info" << std::endl;
-                for (const auto fun : functions)
-                {
-                    LOG(INFO) << "    " << "fun:[" << fun.first << "], entry point:[" << std::hex << fun.second << "]" << std::endl;
-                    auto trampoline = detour_alloc_trampoline((PBYTE)fun.second);
-
-                    if (trampoline != NULL)
-                        LOG(INFO) << "call detour_alloc_trampoline() success for fun" << fun.first << "()"
-                            << "trampoline address:[" << std::hex << trampoline << "]";
-                    else
-                        LOG(INFO) << "call detour_alloc_trampoline() failed for fun" << fun.first << "()";
-                }
-            }
-        }
-    }
 #endif
-
-    return 0;
-
 
     DetourBarrierProcessAttach();
     DetourCriticalInitialize();
