@@ -61,6 +61,7 @@ ELSE()
 ENDIF()
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
+link_directories(LinuxDetours "/usr/local/lib/")
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
 ADD_SUBDIRECTORY(src)
