@@ -50,7 +50,10 @@ linux_mips64:
 	$(CXX) $(CXX_EXE_FLAGS) main.cpp $(CXX_DEFINES)  -L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 -Wl,-rpath=./ -Wl,-rpath=/usr/local/lib/ \
 		-o $(target_app)
 	$(CXX) -E detours.cpp -D_MIPS64_ -D_UNIX64 -o detours.E
-	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(HOOK_SOURCE_FILES) -D_MIPS64_ -D_UNIX64 -o hook.so
+	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(HOOK_SOURCE_FILES) -D_MIPS64_ -D_UNIX64 -o hook.so \
+		-L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 \
+		-Wl,-rpath=/usr/local/lib/ \
+		-Wl,-rpath=./
 macos_x64:
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(SOURCES) $(TRAMPOLINE_X86) -D_AMD64_ -D_UNIX64 -o $(LIB_NAME)64.dylib
 
