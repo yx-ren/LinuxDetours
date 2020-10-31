@@ -13,6 +13,7 @@
 #include <sstream>
 #include <iomanip>
 #include <string.h>
+#include <stdarg.h>
 
 //#define DETOUR_DEBUG 1
 #define DETOURS_INTERNAL
@@ -656,8 +657,16 @@ struct _DETOUR_TRAMPOLINE
 //C_ASSERT(sizeof(_DETOUR_TRAMPOLINE) == 968);
 
 enum {
-    SIZE_OF_JMP = 8
+    SIZE_OF_JMP = 4
 };
+
+inline PBYTE detour_gen_jr_ra_inc(PBYTE pbCode)
+{
+    uint8_t jr_ra_inc[] = {0x32, 0x00, 0x00, 0x08}; // 03e00008 jr ra
+    int jr_ra_inc_len = sizeof(jr_ra_inc);
+    memcpy(pbCode, jr_ra_inc, jr_ra_inc_len);
+    pbCode += jr_ra_inc_len;
+}
 
 inline PBYTE detour_gen_jmp_immediate(PBYTE pbCode, PBYTE pbJmpVal)
 {
@@ -2689,6 +2698,10 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
             *o->ppbPointer = o->pbTarget;
 #endif // DETOURS_X64
 
+#ifdef DETOURS_MIPS64
+            *o->ppbPointer = o->pbTarget;
+#endif // DETOURS_MIPS64
+
 #ifdef DETOURS_ARM
             *o->ppbPointer = DETOURS_PBYTE_TO_PFUNC(o->pbTarget);
 #endif // DETOURS_ARM
@@ -2785,6 +2798,33 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
             *o->ppbPointer = o->pTrampoline->rbCode;
             UNREFERENCED_PARAMETER(pbCode);
 #endif // DETOURS_X86
+
+#ifdef DETOURS_MIPS64
+#if 0
+            PBYTE trampoline = DetourGetTrampolinePtr();
+            const ULONG TrampolineSize = GetTrampolineSize();
+            if (TrampolineSize > DETOUR_TRAMPOLINE_CODE_SIZE) {
+                //error, handle this better
+                DETOUR_TRACE(("detours: TrampolineSize > DETOUR_TRAMPOLINE_CODE_SIZE (%08X != %08X)",
+                    TrampolineSize, DETOUR_TRAMPOLINE_CODE_SIZE));
+                LOG(FATAL) << "Invalid trampoline size: " << TrampolineSize;
+            }
+            PBYTE endOfTramp = (PBYTE)&o->pTrampoline->rbTrampolineCode;
+            memcpy(endOfTramp, trampoline, TrampolineSize);
+#endif
+            o->pTrampoline->HookIntro = (PVOID)BarrierIntro;
+            o->pTrampoline->HookOutro = (PVOID)BarrierOutro;
+            //o->pTrampoline->Trampoline = endOfTramp;
+            o->pTrampoline->OldProc = o->pTrampoline->rbCode;
+            o->pTrampoline->HookProc = o->pTrampoline->pbDetour;
+            o->pTrampoline->IsExecutedPtr = new int();
+
+            detour_gen_jmp_indirect(o->pTrampoline->rbCodeIn, (PBYTE*)&o->pTrampoline->Trampoline);
+            PBYTE pbCode = detour_gen_jmp_immediate(o->pbTarget, o->pTrampoline->rbCodeIn);
+            pbCode = detour_gen_brk(pbCode, o->pTrampoline->pbRemain);
+            *o->ppbPointer = o->pTrampoline->rbCode;
+            UNREFERENCED_PARAMETER(pbCode);
+#endif // DETOURS_MIPS64
 
 #ifdef DETOURS_ARM
             UCHAR * trampoline = DetourGetArmTrampolinePtr(o->pTrampoline->IsThumbTarget);
@@ -3295,7 +3335,7 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
         nAlign++;
 
         std::string rbCode = dumpHex((const char*)pTrampoline->rbCode, 32);
-        DETOUR_TRACE(("rbCode:\n%s\n", rbCode.c_str()));
+        DETOUR_TRACE(("rbCode(%p):\n%s\n", pTrampoline->rbCode, rbCode.c_str()));
 
         if (nAlign >= ARRAYSIZE(pTrampoline->rAlign)) {
             break;
@@ -3316,6 +3356,25 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
         pbSrc += cFiller;
         cbTarget = (LONG)(pbSrc - pbTarget);
     }
+
+#if 1
+    {
+        DETOUR_TRACE((" detours: rAlign ["));
+        LONG n = 0;
+        for (n = 0; n < ARRAYSIZE(pTrampoline->rAlign); n++) {
+            if (pTrampoline->rAlign[n].obTarget == 0 &&
+                pTrampoline->rAlign[n].obTrampoline == 0) {
+                break;
+            }
+            DETOUR_TRACE((" %d/%d",
+                pTrampoline->rAlign[n].obTarget,
+                pTrampoline->rAlign[n].obTrampoline
+                ));
+
+        }
+        DETOUR_TRACE((" ]\n"));
+    }
+#endif
 
 #if DETOUR_DEBUG
     {
@@ -3366,7 +3425,11 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
     }
 #endif // !DETOURS_IA64
 
+//#ifndef DETOURS_MIPS64
     pTrampoline->pbRemain = pbTarget + cbTarget;
+//#else
+    //pTrampoline->pbRemain = pbTarget + cbTarget + 4; // 4 byte is nop, below j(jmp) instruction
+//#endif
     pTrampoline->pbDetour = (PBYTE)pDetour;
 
     InsertTraceHandle(pTrampoline);
@@ -3421,6 +3484,12 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
     pbTrampoline = detour_gen_jmp_immediate(pbTrampoline, pTrampoline->pbRemain);
     pbTrampoline = detour_gen_brk(pbTrampoline, pbPool);
 #endif // DETOURS_X86
+
+#ifdef DETOURS_MIPS64
+    //pbTrampoline = detour_gen_jmp_immediate(pbTrampoline, pTrampoline->pbRemain);
+    pbTrampoline = detour_gen_jr_ra_inc(pbTrampoline);
+    pbTrampoline = detour_gen_brk(pbTrampoline, pbPool);
+#endif // DETOURS_MIPS64
 
 #ifdef DETOURS_ARM
     pbTrampoline = detour_gen_jmp_immediate(pbTrampoline + pTrampoline->IsThumbTarget, &pbPool, pTrampoline->pbRemain);

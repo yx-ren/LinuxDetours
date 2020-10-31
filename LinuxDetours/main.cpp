@@ -132,6 +132,7 @@ bool get_dylib_functions(const std::string& dylib_path, std::map<std::string, vo
 
 int main(int argc, char * argv[])
 {
+    sleep(1);
     test_glog(argv[0]);
 
 #if 0

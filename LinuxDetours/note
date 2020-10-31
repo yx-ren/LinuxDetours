@@ -353,6 +353,68 @@ LONG DetourExport DetourInstallHook(
                 ULONG cbTarget = 0;
                 ULONG cbJump = SIZE_OF_JMP; // DETOURS_X64 was 5, enum {SIZE_OF_JMP = 5};
                 ULONG nAlign = 0;
+                while (cbTarget < cbJump) {
+                    PBYTE pbOp = pbSrc;
+                    LONG lExtra = NULL;
+
+                    DETOUR_TRACE((" DetourCopyInstruction(%p,%p)\n",
+                                pbTrampoline, pbSrc));
+                    pbSrc = (PBYTE)
+                        DetourCopyInstruction(pbTrampoline, (PVOID*)&pbPool, pbSrc, NULL, &lExtra);
+                        |
+                        {
+                            PVOID WINAPI DetourCopyInstruction(_In_opt_ PVOID pDst,
+                                    _Inout_opt_ PVOID *ppDstPool,
+                                    _In_ PVOID pSrc,
+                                    _Out_opt_ PVOID *ppTarget,
+                                    _Out_opt_ LONG *plExtra)
+                            {
+                                UNREFERENCED_PARAMETER(ppDstPool);  // x86 & x64 don't use a constant pool.
+
+                                CDetourDis oDetourDisasm((PBYTE*)ppTarget, plExtra);
+                                return oDetourDisasm.CopyInstruction((PBYTE)pDst, (PBYTE)pSrc);
+                                                     |
+                                                    {
+                                                        PBYTE CDetourDis::CopyInstruction(PBYTE pbDst, PBYTE pbSrc)
+                                                        {
+                                                            // Configure scratch areas if real areas are not available.
+                                                            if (NULL == pbDst) {
+                                                                pbDst = m_rbScratchDst;
+                                                            }
+                                                            if (NULL == pbSrc) {
+                                                                // We can't copy a non-existent instruction.
+                                                                //SetLastError(ERROR_INVALID_DATA);
+                                                                return NULL;
+                                                            }
+
+                                                            // Figure out how big the instruction is, do the appropriate copy,
+                                                            // and figure out what the target of the instruction is if any.
+                                                            //
+                                                            REFCOPYENTRY pEntry = &s_rceCopyTable[pbSrc[0]];
+                                                            return (this->*pEntry->pfCopy)(pEntry, pbDst, pbSrc);
+                                                        }
+                                                    }
+                            }
+                        }
+                    DETOUR_TRACE((" DetourCopyInstruction() = %p (%d bytes)\n",
+                                pbSrc, (int)(pbSrc - pbOp)));
+                    pbTrampoline += (pbSrc - pbOp) + lExtra;
+                    cbTarget = (LONG)(pbSrc - pbTarget);
+                    pTrampoline->rAlign[nAlign].obTarget = cbTarget;
+                    pTrampoline->rAlign[nAlign].obTrampoline = pbTrampoline - pTrampoline->rbCode;
+                    nAlign++;
+
+                    std::string rbCode = dumpHex((const char*)pTrampoline->rbCode, 32);
+                    DETOUR_TRACE(("rbCode(%p):\n%s\n", pTrampoline->rbCode, rbCode.c_str()));
+
+                    if (nAlign >= ARRAYSIZE(pTrampoline->rAlign)) {
+                        break;
+                    }
+
+                    if (detour_does_code_end_function(pbOp)) {
+                        break;
+                    }
+                }
             }
 
 

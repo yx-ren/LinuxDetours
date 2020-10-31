@@ -1749,11 +1749,17 @@ PBYTE CDetourDis::CopyInstruction(PBYTE pbDst, PBYTE pbSrc)
         return NULL;
     }
 
+#if 0
     // Figure out how big the instruction is, do the appropriate copy,
     // and figure out what the target of the instruction is if any.
     //
     REFCOPYENTRY pEntry = &s_rceCopyTable[pbSrc[0]];
     return (this->*pEntry->pfCopy)(pEntry, pbDst, pbSrc);
+#else
+    int instruction_len = 8;
+    memcpy(pbDst, pbSrc, sizeof(char) * instruction_len);
+    pbSrc += instruction_len;
+#endif
 }
 
 PBYTE CDetourDis::CopyBytes(REFCOPYENTRY pEntry, PBYTE pbDst, PBYTE pbSrc)
