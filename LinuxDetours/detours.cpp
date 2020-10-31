@@ -656,7 +656,7 @@ struct _DETOUR_TRAMPOLINE
 //C_ASSERT(sizeof(_DETOUR_TRAMPOLINE) == 968);
 
 enum {
-    SIZE_OF_JMP = 5
+    SIZE_OF_JMP = 8
 };
 
 inline PBYTE detour_gen_jmp_immediate(PBYTE pbCode, PBYTE pbJmpVal)
