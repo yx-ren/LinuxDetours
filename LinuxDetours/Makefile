@@ -41,6 +41,7 @@ linux_x64:
 		-Wl,-rpath=./ \
 		-o $(target_app)
 	$(CXX) -E detours.cpp -D_AMD64_ -D_UNIX64 -o detours.E
+	$(CXX) -c $(CXX_FLAGS) $(TRAMPOLINE_X86) -D_AMD64_ -D_UNIX64 -o $(TRAMPOLINE_X86).o
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(HOOK_SOURCE_FILES) -D_AMD64_ -D_UNIX64 -o hook.so \
 		-L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 \
 		-Wl,-rpath=/usr/local/lib/ \
@@ -54,6 +55,7 @@ linux_mips64:
 	$(CXX) $(CXX_EXE_FLAGS) main.cpp $(CXX_DEFINES)  -L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 -Wl,-rpath=./ -Wl,-rpath=/usr/local/lib/ \
 		-o $(target_app)
 	$(CXX) -E detours.cpp -D_MIPS64_ -D_UNIX64 -o detours.E
+	$(CXX) -c $(CXX_FLAGS) $(TRAMPOLINE_MIPS) -D_MIPS64_ -D_UNIX64 -o $(TRAMPOLINE_MIPS).o
 	$(CXX) $(CXX_FLAGS) $(CXX_DEFINES) $(HOOK_SOURCE_FILES) -D_MIPS64_ -D_UNIX64 -o hook.so \
 		-L ./ -L/usr/lib/x86_64-linux-gnu -ldetours64 \
 		-Wl,-rpath=/usr/local/lib/ \
