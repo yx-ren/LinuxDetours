@@ -428,6 +428,16 @@ inline PBYTE detour_gen_jmp_immediate(PBYTE pbCode, PBYTE pbJmpVal)
     PBYTE pbJmpSrc = pbCode + 5;
     *pbCode++ = 0xE9;   // jmp +imm32
     *((INT32*&)pbCode)++ = (INT32)(pbJmpVal - pbJmpSrc);
+
+    int instruction_len = 5;
+    PBYTE pbCodeOrigin = pbCode - instruction_len;
+    DETOUR_TRACE(("detour_gen_jmp_immediate() "
+                "pbJmpVal: %p, pbJmpSrc: %p (%p + %d), offset: %x, "
+                "jmp code(%p ): %s\n"
+                , pbJmpVal, pbJmpSrc, pbCodeOrigin, instruction_len, (INT32)(pbJmpVal - pbJmpSrc)
+                , pbCodeOrigin, dumpHex((const char*)pbCodeOrigin, instruction_len).c_str()
+                ));
+
     return pbCode;
 }
 
@@ -437,6 +447,16 @@ inline PBYTE detour_gen_jmp_indirect(PBYTE pbCode, PBYTE *ppbJmpVal)
     *pbCode++ = 0xff;   // jmp [+imm32]
     *pbCode++ = 0x25;
     *((INT32*&)pbCode)++ = (INT32)((PBYTE)ppbJmpVal - pbJmpSrc);
+
+    int instruction_len = 6;
+    PBYTE pbCodeOrigin = pbCode - instruction_len;
+    DETOUR_TRACE(("detour_gen_jmp_indirect() "
+                "pbJmpVal: (address: %p val: %p), pbJmpSrc: %p (%p + %d), offset: %x, "
+                "jmp code(%p ): %s\n"
+                , (PBYTE)ppbJmpVal, *ppbJmpVal, pbJmpSrc, pbCodeOrigin, instruction_len, (INT32)((PBYTE)ppbJmpVal - pbJmpSrc)
+                , pbCodeOrigin, dumpHex((const char*)pbCodeOrigin, instruction_len).c_str()
+                ));
+
     return pbCode;
 }
 
@@ -685,7 +705,7 @@ inline PBYTE detour_gen_jmp_immediate(PBYTE pbCode, PBYTE pbJmpVal)
     DETOUR_TRACE(("detour_gen_jmp_immediate()\n"
                 "jmp address: %p, \n"
                 "instr_index: 0x%x((%p & 0xfffffff) >> 2)\n"
-                "j_code: 0x%x\n"
+                "j_code: 0x%x ([6 high bit](0000 10) + [26 low bit])\n"
                 "J OP code: 0x%x( 0x%x | 0x%x )\n",
                 pbJmpVal,
                 instr_index, pbJmpVal,
@@ -2020,6 +2040,7 @@ extern "C" void Trampoline_ASM_x86();
 #if defined(DETOURS_X64) || defined(DETOURS_X86)
 void* trampoline_template() {
 
+
     uintptr_t ret = 0;
 #if defined(DETOURS_X64)
     ret = reinterpret_cast<uintptr_t>(&trampoline_template_x64);
@@ -2061,6 +2082,42 @@ ULONG GetTrampolineSize()
     return ___TrampolineSize;
 }
 #endif
+
+#ifdef DETOURS_MIPS64
+void* trampoline_template()
+{
+    uintptr_t ret = 0;
+    //ret = reinterpret_cast<uintptr_t>(&trampoline_template_mips64);
+    asm("" : "=rm"(ret)); // force compiler to abandon its assumption that ret is aligned
+    //ret &= ~1;
+    return reinterpret_cast<void*>(ret);
+}
+
+void* trampoline_data() {
+#if defined(DETOURS_X64)
+    return (&trampoline_data_x64);
+#endif
+    return nullptr;
+}
+UCHAR* DetourGetTrampolinePtr()
+{
+    UCHAR* Ptr = (UCHAR*)trampoline_template();
+    return Ptr;
+}
+
+ULONG GetTrampolineSize()
+{
+    if (___TrampolineSize != 0)
+        return ___TrampolineSize;
+    uint32_t code_size_ = reinterpret_cast<uintptr_t>(trampoline_data()) -
+        reinterpret_cast<uintptr_t>(trampoline_template());
+
+    ___TrampolineSize = code_size_;
+    return ___TrampolineSize;
+}
+#endif // DETOURS_MIPS64
+
+
 #if defined(DETOURS_ARM) || defined(DETOURS_ARM64)
 
 extern "C" {
@@ -2839,7 +2896,7 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
                 //error, handle this better
                 DETOUR_TRACE(("detours: TrampolineSize > DETOUR_TRAMPOLINE_CODE_SIZE (%08X != %08X)",
                     TrampolineSize, DETOUR_TRAMPOLINE_CODE_SIZE));
-                LOG(FATAL) << "Invalid trampoline size: " << TrampolineSize;
+                //LOG(FATAL) << "Invalid trampoline size: " << TrampolineSize;
             }
             PBYTE endOfTramp = (PBYTE)&o->pTrampoline->rbTrampolineCode;
             memcpy(endOfTramp, trampoline, TrampolineSize);
@@ -2851,7 +2908,11 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
             o->pTrampoline->HookProc = o->pTrampoline->pbDetour;
             o->pTrampoline->IsExecutedPtr = new int();
 
+#if 0
             detour_gen_jmp_indirect(o->pTrampoline->rbCodeIn, (PBYTE*)&o->pTrampoline->Trampoline);
+#else
+            detour_gen_jmp_immediate(o->pTrampoline->rbCodeIn, (PBYTE)(o->pTrampoline->Trampoline));
+#endif
             PBYTE pbCode = detour_gen_jmp_immediate(o->pbTarget, o->pTrampoline->rbCodeIn);
             pbCode = detour_gen_brk(pbCode, o->pTrampoline->pbRemain);
             *o->ppbPointer = o->pTrampoline->rbCode;
@@ -2979,6 +3040,13 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
                 o->pTrampoline->pbDetour));
             DETOUR_TRACE(("\n"));
 #endif // DETOURS_IA64
+
+#if 0
+            std::string trampoline_string = dumpTrampoline(o->pTrampoline);
+            DETOUR_TRACE(("dump trampoline:\n%s\n", trampoline_string.c_str()));
+#else
+            dumpTrampoline(o->pTrampoline);
+#endif
 
             AddTrampolineToGlobalList(o->pTrampoline);
         }
@@ -3340,12 +3408,12 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
     }
 #endif
 
-    std::string Trampoline_code = dumpHex((const char*)pbTrampoline, 32);
+    std::string pbTrampoline_code = dumpHex((const char*)pbTrampoline, 32);
     std::string pbSrc_code = dumpHex((const char*)pbSrc, 32);
     std::string pDetour_code = dumpHex((const char*)pDetour, 32);
-    DETOUR_TRACE(("Trampoline_code(%p):\n%s\n", pbTrampoline, Trampoline_code.c_str()));
-    DETOUR_TRACE(("pbSrc_code(%p):\n%s\n", pbSrc, pbSrc_code.c_str()));
-    DETOUR_TRACE(("pDetour_code(%p):\n%s\n", pDetour, pDetour_code.c_str()));
+    DETOUR_TRACE(("pbTrampoline code(%p):\n%s\n", pbTrampoline, pbTrampoline_code.c_str()));
+    DETOUR_TRACE(("pbSrc code(%p):\n%s\n", pbSrc, pbSrc_code.c_str()));
+    DETOUR_TRACE(("pDetour code(%p):\n%s\n", pDetour, pDetour_code.c_str()));
 
     while (cbTarget < cbJump) {
         PBYTE pbOp = pbSrc;
@@ -3534,7 +3602,12 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
 #endif // DETOURS_ARM64
 
     (void)pbTrampoline;
-    DETOUR_TRACE(("dump trampoline:%s\n", dumpTrampoline(pTrampoline).c_str()));
+#if 0
+    std::string trampoline_string = dumpTrampoline(pTrampoline);
+    DETOUR_TRACE(("dump trampoline:\n%s\n", trampoline_string.c_str()));
+#else
+    dumpTrampoline(pTrampoline);
+#endif
 
     DWORD dwOld = PAGE_EXECUTE_READ;
 
@@ -3814,31 +3887,50 @@ std::string dumpTrampoline(const _DETOUR_TRAMPOLINE* trampoline)
 {
     std::ostringstream oss;
 
+    oss << "-------------------- dump begin dumpTrampoline --------------------" << std::endl;
     oss << "trampoline address: " << trampoline << std::endl;
-    oss << "rbCode, size: " << std::dec << sizeof(trampoline->rbCode) << " "
-            << "hex dump:\n" << dumpHex((const char*)trampoline->rbCode, sizeof(trampoline->rbCode)) << "\n"
+    oss << "\nrbCode(" << std::hex << (void*)trampoline->rbCode << "), size: " << std::dec << sizeof(trampoline->rbCode) << " "
+            << "(target code + jmp to pbRemain.) "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->rbCode, sizeof(trampoline->rbCode)) << "\n\n"
+
         << "cbCode: " << trampoline->cbCode << " \n"
-        << "cbCodeBreak: " << trampoline->cbCodeBreak << " \n"
-        << "rbRestore, size: " << std::dec << sizeof(trampoline->rbRestore) << " "
-            << "hex dump:\n" << dumpHex((const char*)trampoline->rbRestore, sizeof(trampoline->rbRestore)) << "\n"
+        << "cbCodeBreak: " << trampoline->cbCodeBreak << " \n\n"
+
+        << "rbRestore(" << std::hex << (void*)trampoline->rbRestore << "), size: " << std::dec << sizeof(trampoline->rbRestore) << " "
+            << "(original target code.) "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->rbRestore, sizeof(trampoline->rbRestore)) << "\n\n"
+
         << "cbRestore: " << trampoline->cbRestore << " \n"
-        << "cbRestoreBreak: " << trampoline->cbRestoreBreak << " \n"
+        << "cbRestoreBreak: " << trampoline->cbRestoreBreak << " \n\n"
 
         << "pbRemain: " << std::hex << (void*)trampoline->pbRemain << " \n"
-        << "pbDetour: " << std::hex << (void*)trampoline->pbDetour << " \n"
+            << "(first instruction after moved code. [free list]) "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->pbRemain, 32) << "\n"
 
-        << "rbCodeIn, size: " << std::dec << sizeof(trampoline->rbCodeIn) << " "
-            << "hex dump:\n" << dumpHex((const char*)trampoline->rbCodeIn, sizeof(trampoline->rbCodeIn)) << "\n"
+        << "pbDetour: " << std::hex << (void*)trampoline->pbDetour << " \n"
+            << "(first instruction of detour function.) "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->pbDetour, 32) << "\n"
+
+        << "rbCodeIn(" << std::hex << (void*)trampoline->rbCodeIn << "), size: " << std::dec << sizeof(trampoline->rbCodeIn) << " "
+            << "(jmp [pbDetour])"
+            << "hex dump:\n" << dumpHex((const char*)trampoline->rbCodeIn, sizeof(trampoline->rbCodeIn)) << "\n\n"
+
         << "Callback: " << std::hex << trampoline->Callback << " \n"
         << "Trampoline: " << std::hex << trampoline->Trampoline << " \n"
         << "HookIntro: " << std::hex << trampoline->HookIntro << " \n"
         << "OldProc: " << std::hex << (void*)trampoline->OldProc << " \n"
         << "HookProc: " << std::hex << trampoline->HookProc << " \n"
         << "HookOutro: " << std::hex << trampoline->HookOutro << " \n"
-        << "IsExecutedPtr: " << std::hex << trampoline->IsExecutedPtr << " \n"
-        << std::endl;
+        << "IsExecutedPtr: " << std::hex << trampoline->IsExecutedPtr << " \n\n"
 
-    return std::move(oss.str());
+        << "rbTrampolineCode(" << std::hex << (void*)trampoline->rbTrampolineCode << "), size: "
+            << std::dec << DETOUR_TRAMPOLINE_CODE_SIZE << " "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->rbTrampolineCode, DETOUR_TRAMPOLINE_CODE_SIZE) << "\n"
+        ;
+    oss << "-------------------- dump end dumpTrampoline --------------------" << std::endl;
+
+    std::cout << oss.str() << std::endl;
+    return oss.str();
 }
 
 //  End of File
