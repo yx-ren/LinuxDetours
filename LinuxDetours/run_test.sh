@@ -7,7 +7,7 @@ if [ ! -f $DUMP_SH ];then
     exit -1
 fi
 
-OBJS=("linux_detours.test" "libdetours64.so" "trampoline_x86.cpp.o" "trampoline_mips64.cpp.o")
+OBJS=("linux_detours.test" "libdetours64.so" "trampoline_x86.cpp.o" "trampoline_mips.cpp.o")
 
 for ((i = 0; i != ${#OBJS[@]}; i++))
 do
