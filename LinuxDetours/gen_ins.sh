@@ -45,33 +45,14 @@ do
                                 inc = $2;
                                 comments = (comments""$i"    ");
                             }
-                            printf("array[i++] = 0x%s   %s\n", inc, comments);
+                            printf("    array[i++] = 0x%s;   %s\n", inc, comments);
                             #print comments
                         } \
                         ' \
                      )
-        echo "$objdump_ins" | tee $FUNCTION_NAME.disassemble
+        hard_code_incs_file="$FUNCTION_NAME.disassemble"
+        echo "$objdump_ins" | tee $hard_code_incs_file
+        echo "generate hard code into file:[ $hard_code_incs_file ]"
         break;
     fi
 done
-
-exit 0;
-
-#echo "$objdump_ins"
-#for ins in $objdump_ins
-#do
-#    echo $inc
-#done
-
-obj_instructions=($objdump_ins) # to array
-for ((i = 0; i != ${#obj_instructions[@]}; i++))
-do
-    instruction=${obj_instructions[i]}
-    echo $instruction
-    #echo "array[i++] = 0x$instruction"
-    #if [ $line == $start_line ]; then
-    #fi
-done
-echo "start line:[ $begin_line ], end line:[ $end_line ]"
-
-exit

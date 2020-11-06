@@ -25,6 +25,7 @@
 
 struct _DETOUR_TRAMPOLINE;
 #define __256MB_SIZE__       0x10000000
+#define __J_INSTRUCTION      0x08000000 // mips64 J inistruction: [6 high bit(0000 10)] + [26 low bit]
 #define __IS_OUT_BOUNDARY__(low, val, up) (( (val) < (low) ) || ( (val) > (up) ))
 
 std::string dumpTrampoline(const _DETOUR_TRAMPOLINE* trampoline);
@@ -691,37 +692,59 @@ inline PBYTE detour_gen_jr_ra_inc(PBYTE pbCode)
 
 inline PBYTE detour_gen_jmp_immediate(PBYTE pbCode, PBYTE pbJmpVal)
 {
-#if 0
-    PBYTE pbJmpSrc = pbCode + 5;
-    *pbCode++ = 0xE9;   // jmp +imm32
-    *((INT32*&)pbCode)++ = (INT32)(pbJmpVal - pbJmpSrc);
-    return pbCode;
-#else
     // The low 28 bits of the target address is the instr_index field shifted left 2bits
     uint32_t instr_index = ((PtrToUlong(pbJmpVal) & 0xfffffff) >> 2);
-    uint32_t j_code = 0x80000000; // J: 6bit, 000010
+    uint32_t j_code = __J_INSTRUCTION; // J: 6bit, 000010
     uint32_t j_target_code = j_code | instr_index;
 
     DETOUR_TRACE(("detour_gen_jmp_immediate()\n"
                 "jmp address: %p, \n"
-                "instr_index: 0x%x((%p & 0xfffffff) >> 2)\n"
-                "j_code: 0x%x ([6 high bit](0000 10) + [26 low bit])\n"
-                "J OP code: 0x%x( 0x%x | 0x%x )\n",
+                "instr_index: 0x%08x((%p & 0x0fffffff) >> 2)\n"
+                "j_code: 0x%08X ([6 high bit](0000 10) + [26 low bit])\n"
+                "J OP code: 0x%08x( 0x%08x | 0x%08x )\n",
                 pbJmpVal,
                 instr_index, pbJmpVal,
                 j_code,
                 j_target_code, j_code, instr_index));
 
-#if 1
-    uint32_t reverse_byte_order = (htonl(j_target_code));
-    memcpy(pbCode, &reverse_byte_order, sizeof(uint32_t));
+    memcpy(pbCode, &j_target_code, sizeof(uint32_t));
     pbCode += sizeof(uint32_t);
-#else
-    *((INT32*&)pbCode)++ = (INT32)(htonl(j_target_code));
-#endif
+}
 
-    //uint64_t current_region = pbJmpVal - (PtrToUlong(pbJmpVal) & __256MB_SIZE__) // down to 256MB block
-#endif
+inline std::string generate_asm_hard_code()
+{
+    uint32_t array[DETOUR_TRAMPOLINE_CODE_SIZE / sizeof(uint32_t)] = {0};
+    int i = 0;
+
+    // this is a split comment
+    array[i++] = 0x03e0782d;   // 03e0782d    move    t3,ra    
+    array[i++] = 0x04110001;   // 04110001    bal    34    <trampoline_template_mips64+0xc>    
+    array[i++] = 0x00000000;   // 00000000    nop    
+    array[i++] = 0x03e0702d;   // 03e0702d    move    t2,ra    
+    array[i++] = 0x01e0f82d;   // 01e0f82d    move    ra,t3    
+    array[i++] = 0x240c000c;   // 240c000c    li    t0,12    
+    array[i++] = 0x01cc682f;   // 01cc682f    dsubu    t1,t2,t0    
+    array[i++] = 0x240c000c;   // 240c000c    li    t0,12    
+    array[i++] = 0x01ac582f;   // 01ac582f    dsubu    a7,t1,t0    
+    array[i++] = 0x8d6a0000;   // 8d6a0000    lw    a6,0(a7)    
+    array[i++] = 0x0160f809;   // 0160f809    jalr    a7    
+    array[i++] = 0x00000000;   // 00000000    nop    
+    array[i++] = 0x03e00008;   // 03e00008    jr    ra    
+    array[i++] = 0x00000000;   // 00000000    nop    
+    array[i++] = 0x24021389;   // 24021389    li    v0,5001    
+    array[i++] = 0x24040002;   // 24040002    li    a0,2    
+    array[i++] = 0x24050000;   // 24050000    li    a1,0    
+    array[i++] = 0x24060003;   // 24060003    li    a2,3    
+    array[i++] = 0x0000000c;   // 0000000c    syscall    
+    array[i++] = 0xdf870000;   // df870000    ld    a3,0(gp)    
+    array[i++] = 0xdce70000;   // dce70000    ld    a3,0(a3)    
+    array[i++] = 0x24070000;   // 24070000    li    a3,0    
+    array[i++] = 0x10000007;   // 10000007    b    a0    <trampoline_exit>    
+    array[i++] = 0x00000000;   // 00000000    nop    
+    // this is a split comment
+
+    std::string hard_code(reinterpret_cast<char*>(array), sizeof(array));
+    return hard_code;
 }
 
 inline PBYTE detour_gen_jmp_indirect(PBYTE pbCode, PBYTE *ppbJmpVal)
@@ -736,7 +759,11 @@ inline PBYTE detour_gen_jmp_indirect(PBYTE pbCode, PBYTE *ppbJmpVal)
 inline PBYTE detour_gen_brk(PBYTE pbCode, PBYTE pbLimit)
 {
     while (pbCode < pbLimit) {
+#if 0
         *pbCode++ = 0xcc;   // brk;
+#else
+        *pbCode++ = 0x00;   // brk;
+#endif
     }
     return pbCode;
 }
@@ -2028,6 +2055,13 @@ extern "C" {
 extern "C" void Trampoline_ASM_x86();
 #endif
 
+#ifdef DETOURS_MIPS64
+extern "C" {
+    extern void* trampoline_data_mips64;
+    extern void(*trampoline_template_mips64)();
+}
+#endif
+
 #ifdef DETOURS_ARM
 //extern "C" void Trampoline_ASM_ARM();
 //extern "C" void Trampoline_ASM_ARM_T();
@@ -2087,18 +2121,20 @@ ULONG GetTrampolineSize()
 void* trampoline_template()
 {
     uintptr_t ret = 0;
-    //ret = reinterpret_cast<uintptr_t>(&trampoline_template_mips64);
+    ret = reinterpret_cast<uintptr_t>(&trampoline_template_mips64);
     asm("" : "=rm"(ret)); // force compiler to abandon its assumption that ret is aligned
     //ret &= ~1;
     return reinterpret_cast<void*>(ret);
 }
 
-void* trampoline_data() {
-#if defined(DETOURS_X64)
-    return (&trampoline_data_x64);
+void* trampoline_data()
+{
+#ifdef DETOURS_MIPS64
+    return (&trampoline_data_mips64);
 #endif
     return nullptr;
 }
+
 UCHAR* DetourGetTrampolinePtr()
 {
     UCHAR* Ptr = (UCHAR*)trampoline_template();
@@ -2889,21 +2925,29 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
 #endif // DETOURS_X86
 
 #ifdef DETOURS_MIPS64
-#if 0
             PBYTE trampoline = DetourGetTrampolinePtr();
             const ULONG TrampolineSize = GetTrampolineSize();
             if (TrampolineSize > DETOUR_TRAMPOLINE_CODE_SIZE) {
                 //error, handle this better
                 DETOUR_TRACE(("detours: TrampolineSize > DETOUR_TRAMPOLINE_CODE_SIZE (%08X != %08X)",
                     TrampolineSize, DETOUR_TRAMPOLINE_CODE_SIZE));
-                //LOG(FATAL) << "Invalid trampoline size: " << TrampolineSize;
+                LOG(FATAL) << "Invalid trampoline size: " << TrampolineSize;
             }
+
             PBYTE endOfTramp = (PBYTE)&o->pTrampoline->rbTrampolineCode;
+#if 1
+            // hard code trampoline assembly code
+            // TODO......
+            std::string asm_hard_code = generate_asm_hard_code();
+            memcpy(o->pTrampoline->rbTrampolineCode, asm_hard_code.c_str(), TrampolineSize);
+            memcpy(endOfTramp, asm_hard_code.c_str(), TrampolineSize);
+#else
             memcpy(endOfTramp, trampoline, TrampolineSize);
 #endif
+
             o->pTrampoline->HookIntro = (PVOID)BarrierIntro;
             o->pTrampoline->HookOutro = (PVOID)BarrierOutro;
-            //o->pTrampoline->Trampoline = endOfTramp;
+            o->pTrampoline->Trampoline = endOfTramp;
             o->pTrampoline->OldProc = o->pTrampoline->rbCode;
             o->pTrampoline->HookProc = o->pTrampoline->pbDetour;
             o->pTrampoline->IsExecutedPtr = new int();

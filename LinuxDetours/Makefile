@@ -3,7 +3,7 @@ UNAME_M := $(shell uname -m)
 
 CXX = g++
 CXX_FLAGS = -Wall -Wno-null-conversion -std=c++11 -g -O0 -fno-omit-frame-pointer -fPIC -shared
-CXX_EXE_FLAGS = -Wall -std=c++11 -g -O0
+CXX_EXE_FLAGS = -Wall -std=c++11 -g -O0 -Wno-null-conversion -fno-omit-frame-pointer
 CXX_DEFINES = -lpthread -ldl -lglog 
 
 SOURCES = barrier.cpp detours.cpp disasm.cpp plthook_elf.cpp
