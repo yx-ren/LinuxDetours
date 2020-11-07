@@ -724,22 +724,13 @@ inline std::string generate_asm_hard_code()
     array[i++] = 0x01e0f82d;   // 01e0f82d    move    ra,t3    
     array[i++] = 0x240c000c;   // 240c000c    li    t0,12    
     array[i++] = 0x01cc682f;   // 01cc682f    dsubu    t1,t2,t0    
-    array[i++] = 0x240c000c;   // 240c000c    li    t0,12    
-    array[i++] = 0x01ac582f;   // 01ac582f    dsubu    a7,t1,t0    
-    array[i++] = 0x8d6a0000;   // 8d6a0000    lw    a6,0(a7)    
-    array[i++] = 0x0160f809;   // 0160f809    jalr    a7    
+    array[i++] = 0x240c0018;   // 240c0018    li    t0,24    
+    array[i++] = 0x01ac682f;   // 01ac682f    dsubu    t1,t1,t0    
+    array[i++] = 0xddac0000;   // ddac0000    ld    t0,0(t1)    
+    array[i++] = 0x0180c82d;   // 0180c82d    move    t9,t0    
+    array[i++] = 0x03200008;   // 03200008    jr    t9    
     array[i++] = 0x00000000;   // 00000000    nop    
-    array[i++] = 0x03e00008;   // 03e00008    jr    ra    
-    array[i++] = 0x00000000;   // 00000000    nop    
-    array[i++] = 0x24021389;   // 24021389    li    v0,5001    
-    array[i++] = 0x24040002;   // 24040002    li    a0,2    
-    array[i++] = 0x24050000;   // 24050000    li    a1,0    
-    array[i++] = 0x24060003;   // 24060003    li    a2,3    
-    array[i++] = 0x0000000c;   // 0000000c    syscall    
-    array[i++] = 0xdf870000;   // df870000    ld    a3,0(gp)    
-    array[i++] = 0xdce70000;   // dce70000    ld    a3,0(a3)    
-    array[i++] = 0x24070000;   // 24070000    li    a3,0    
-    array[i++] = 0x10000007;   // 10000007    b    a0    <trampoline_exit>    
+    array[i++] = 0x10000007;   // 10000007    b    7c    <trampoline_exit>    
     array[i++] = 0x00000000;   // 00000000    nop    
     // this is a split comment
 
@@ -1822,7 +1813,8 @@ static void detour_free_trampoline(PDETOUR_TRAMPOLINE pTrampoline)
 {
     PDETOUR_REGION pRegion = (PDETOUR_REGION)
         ((ULONG_PTR)pTrampoline & ~(ULONG_PTR)0xffff);
-#if defined(DETOURS_X86) || defined(DETOURS_X64) || defined(DETOURS_ARM) || defined(DETOURS_ARM64)
+//#if defined(DETOURS_X86) || defined(DETOURS_X64) || defined(DETOURS_ARM) || defined(DETOURS_ARM64)
+#if defined(DETOURS_X86) || defined(DETOURS_X64) || defined(DETOURS_ARM) || defined(DETOURS_ARM64) || defined(DETOURS_MIPS64)
     if (pTrampoline->IsExecutedPtr != NULL) {
         delete pTrampoline->IsExecutedPtr;
     }
@@ -1835,8 +1827,11 @@ static void detour_free_trampoline(PDETOUR_TRAMPOLINE pTrampoline)
     }
 #endif
     memset(pTrampoline, 0, sizeof(*pTrampoline));
+
+#if 0
     pTrampoline->pbRemain = (PBYTE)pRegion->pFree;
     pRegion->pFree = pTrampoline;
+#endif
 }
 
 static BOOL detour_is_region_empty(PDETOUR_REGION pRegion)

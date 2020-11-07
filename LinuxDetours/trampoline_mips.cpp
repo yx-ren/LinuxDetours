@@ -54,45 +54,42 @@ IsExecutedPtr:
 
 trampoline_template_mips64:
 
-        # TODO......
         # get pc instruction
-        move $15,$31 # move t7,ra
+        move $15,$31            # move t3,ra
         bal 4
-        move $14,$31 # move t6,ra
-        move $31,$15 # move ra,t7
-        li $12, 12
-#sub $13, $14, $12 # $13 save the base line
-        dsubu $13, $14, $12 # $13 save the base line
-
-        # get Hook Proc Address
-        li $12, 12 # 12 is [NewProc] offset
-        dsubu $11, $13, $12
-        lw $10, 0($11)
-#la $10, $11
-
-        # jump Hook Proc
-        jalr $11
+        move $14,$31            # move t2,ra
+        move $31,$15            # move ra,t3
+        li $12, 12              # li t0,12    
+        dsubu $13, $14, $12     # dsubu t1,t2,t0 // $t1 save the base line
 
         # -------------------- #
 
-        jr $ra
+        # get Hook Proc Address
+        li $12, 24              # li t0,24 //24 is [NewProc] offset from base line
+        dsubu $13, $13, $12     # dsubu t1,t1,t0 // $t1 save the address of the [NewProc] address
+        ld $12, 0($13)          # ld t0, t1 // read 8 byte from $t1, t0 save the [NewProc] address
 
-        li      $2, 5001 #sys_write syscall id is 5001 -> v0
-        li      $a0, 2 #fd -> a0
-        li      $a1, SEGMENT1
-        li      $a2, 3 
-        syscall
-        ld      $a3, NewProc
-        li      $a3, NewProc
+        # -------------------- #
 
-#move    $t9, $pc + NewProc
-#addu    $t9, $pc, NewProc
+        # save the Remain address
+        #daddiu  $sp, $sp, -16
+        #sd $ra, 0($sp)
 
-#addu    $a1, $pc, NewProc
-#move    $a1, $v0 + NewProc
+        # -------------------- #
 
-#addu    $t9, $pc, NewProc
-#jalr    $t9
+        # jump Hook Proc
+        move $25, $12           # save [NewProc] to $t9, because [$gp] calculate with $t9 in next stack
+        jr $25                  # jr $t9
+
+        # -------------------- #
+
+        # jump to origin call
+        # TODO...... (maybe)
+
+        # -------------------- #
+
+        # jump to Remain
+        # TODO...... (maybe)
 
 ###################################################################################### call original method
         j trampoline_exit

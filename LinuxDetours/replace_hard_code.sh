@@ -25,8 +25,8 @@ down_line=${split_lines_ints[1]}
 split_up_segment=$(sed -n "1, $up_line p" $source_file)
 split_down_segment=$(sed -n "$down_line, $ p" $source_file)
 
-target_file="split"
-rm -rf $target_file
+target_file=$source_file
+> $target_file
 echo "$split_up_segment" >> $target_file
 cat "$hard_code_file" >> $target_file
 echo "$split_down_segment" >> $target_file

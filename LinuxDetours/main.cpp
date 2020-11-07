@@ -28,8 +28,11 @@
 
 unsigned int sleep_detour(unsigned int seconds)
 {
+    const char* str = "sleep_detour()";
+    write(2, str, strlen(str));
     LOG(INFO) << "detours_test: Called sleep_detour";
-    return sleep(seconds);
+    //return sleep(seconds);
+    return 0;
 }
 unsigned int test_detour_b(unsigned int seconds, unsigned int a, unsigned int b, unsigned int c, unsigned int d, unsigned int e)
 {
@@ -49,10 +52,10 @@ VOID* test_runner(void*)
     LOG(INFO) << "detours_test: Function 'test_detour_b' returned " << test_detour_b(1, 2, 3, 4, 5, 6);
 #endif
 
-    LOG(INFO) << "detours_test: Calling sleep for 1 second";
     sleep(1);
-    LOG(INFO) << "detours_test: Calling sleep again for 2 seconds";
+    LOG(INFO) << "detours_test: Calling sleep for 1 second";
     sleep(2);
+    LOG(INFO) << "detours_test: Calling sleep again for 2 seconds";
     
     LOG(INFO)  << "detours_test: Done sleeping\n";
 
