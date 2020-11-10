@@ -1834,7 +1834,7 @@ static void detour_free_trampoline(PDETOUR_TRAMPOLINE pTrampoline)
 #endif
     memset(pTrampoline, 0, sizeof(*pTrampoline));
 
-#if 0
+#if 1
     pTrampoline->pbRemain = (PBYTE)pRegion->pFree;
     pRegion->pFree = pTrampoline;
 #endif
