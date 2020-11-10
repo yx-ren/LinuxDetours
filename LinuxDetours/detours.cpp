@@ -3459,6 +3459,17 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
     DETOUR_TRACE(("pbSrc code(%p):\n%s\n", pbSrc, pbSrc_code.c_str()));
     DETOUR_TRACE(("pDetour code(%p):\n%s\n", pDetour, pDetour_code.c_str()));
 
+#ifdef DETOURS_MIPS64
+    auto CopyNInstruction = [](PVOID pDst, PVOID pSrc, size_t ins_size) -> PVOID
+    {
+        int ins_len = 4;
+        int ins_bytes = ins_size * ins_len;
+        memcpy(pDst, pSrc, sizeof(char) * ins_bytes);
+
+        return pSrc + ins_bytes;
+    };
+#endif
+
     while (cbTarget < cbJump) {
         PBYTE pbOp = pbSrc;
 #ifdef DETOURS_ARM
@@ -3469,7 +3480,11 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
         DETOUR_TRACE((" DetourCopyInstruction(%p,%p)\n",
             pbTrampoline, pbSrc));
         pbSrc = (PBYTE)
+#ifndef DETOURS_MIPS64
             DetourCopyInstruction(pbTrampoline, (PVOID*)&pbPool, pbSrc, NULL, &lExtra);
+#else
+            CopyNInstruction(pbTrampoline, pbSrc, 2);
+#endif
         DETOUR_TRACE((" DetourCopyInstruction() = %p (%d bytes)\n",
             pbSrc, (int)(pbSrc - pbOp)));
         pbTrampoline += (pbSrc - pbOp) + lExtra;
