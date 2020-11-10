@@ -1513,6 +1513,8 @@ static PVOID detour_alloc_region_from_lo(PBYTE pbLo, PBYTE pbHi)
 
     DETOUR_TRACE((" Looking for free region in %p..%p from %p:\n", pbLo, pbHi, pbTry));
     for (; pbTry < pbHi;) {
+        DETOUR_TRACE(("try to found memory [PROT_EXEC | PROT_READ | PROT_WRITE], start address:[%p], size:[0x%x]",
+                pbTry, DETOUR_REGION_SIZE));
         PVOID pv = mmap(pbTry, DETOUR_REGION_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (pv != NULL) {
             DETOUR_TRACE(("detour_alloc_region_from_lo(), call mmap() ok, Looking for free region successed!!!,"
@@ -1753,13 +1755,16 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
     // We need to allocate a new region.
 
     // Round pbTarget down to 64KB block.
+#if 1
     PBYTE origin_pbTarget = pbTarget;
     pbTarget = pbTarget - (PtrToUlong(pbTarget) & 0xffff);
     DETOUR_TRACE(("step 2: Round pbTarget(%p) down to 64KB block, (%p - (%p & 0xffff)) => pbTarget(%p)\n", 
                 origin_pbTarget, origin_pbTarget, origin_pbTarget, pbTarget));
+#endif
 
     PVOID pbTry = NULL;
 
+#if 1
     // Try anything below.
     if (pbTry == NULL) {
         DETOUR_TRACE(("step 3: try to found region from low address(%p) for target(%p)", pLo, pbTarget));
@@ -1777,6 +1782,7 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
         }
 #endif
     }
+#endif
 
     // try anything above.
     if (pbTry == NULL) {
@@ -2932,7 +2938,6 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
             PBYTE endOfTramp = (PBYTE)&o->pTrampoline->rbTrampolineCode;
 #if 1
             // hard code trampoline assembly code
-            // TODO......
             std::string asm_hard_code = generate_asm_hard_code();
             memcpy(o->pTrampoline->rbTrampolineCode, asm_hard_code.c_str(), TrampolineSize);
             memcpy(endOfTramp, asm_hard_code.c_str(), TrampolineSize);
