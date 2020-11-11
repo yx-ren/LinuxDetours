@@ -4,10 +4,20 @@ FILE(GLOB HEADERS
     )
 
 FILE(GLOB SOURCES
-    "*.cpp"
+    "main.cpp"
     )
 
 ADD_EXECUTABLE(${TARGET} ${HEADERS} ${SOURCES})
 ADD_DEPENDENCIES(${TARGET} detours)
 TARGET_LINK_LIBRARIES(${TARGET} detours)
 TARGET_LINK_LIBRARIES(${TARGET} -lglog -ldl)
+
+SET (SDK_DEMO detour.sdk.test)
+FILE(GLOB SDK_FILES
+    "sdk_demo.cpp"
+    )
+#ADD_EXECUTABLE(${SDK_DEMO} "sdk_demo.cpp")
+ADD_EXECUTABLE(${SDK_DEMO} ${SDK_FILES})
+ADD_DEPENDENCIES(${SDK_DEMO} detours_sdk)
+TARGET_LINK_LIBRARIES(${SDK_DEMO} detours_sdk)
+TARGET_LINK_LIBRARIES(${SDK_DEMO} -lglog -ldl)

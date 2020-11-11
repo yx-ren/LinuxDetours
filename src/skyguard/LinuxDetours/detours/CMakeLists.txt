@@ -33,3 +33,5 @@ add_custom_command(
 
 ADD_LIBRARY(${target} SHARED ${SOURCES} ${HEADERS} ${TRAMPOLINE_ASM})
 TARGET_LINK_LIBRARIES(${target} -lglog)
+
+ADD_SUBDIRECTORY(sdk)
