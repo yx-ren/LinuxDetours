@@ -1,7 +1,7 @@
 #/bin/bash
 hard_code_file=trampoline_template_mips64.disassemble
 if [ $# -lt 1 ]; then
-    echo "usage:$0 [cpp_file] [hard code file (default = hard_code_file$)]"
+    echo "usage:$0 [cpp_file] [hard code file (default = $hard_code_file)]"
     exit 0
 fi
 

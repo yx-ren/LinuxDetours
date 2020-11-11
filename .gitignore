@@ -262,3 +262,6 @@ __pycache__/
 
 tags
 build/
+trampoline_mips.cpp.o.*
+*.o
+*.disassemble
