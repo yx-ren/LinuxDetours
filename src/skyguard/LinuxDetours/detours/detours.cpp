@@ -13,6 +13,8 @@
 #include <sstream>
 #include <iomanip>
 #include <string.h>
+#include <stdarg.h>
+#include <arpa/inet.h>
 
 //#define DETOUR_DEBUG 1
 #define DETOURS_INTERNAL
@@ -21,9 +23,12 @@
 
 #define NOTHROW
 
+struct _DETOUR_TRAMPOLINE;
 #define __256MB_SIZE__       0x10000000
+#define __J_INSTRUCTION      0x08000000 // mips64 J inistruction: [6 high bit(0000 10)] + [26 low bit]
 #define __IS_OUT_BOUNDARY__(low, val, up) (( (val) < (low) ) || ( (val) > (up) ))
 
+std::string dumpTrampoline(const _DETOUR_TRAMPOLINE* trampoline);
 std::string dumpHex(const char* buf, int len)
 {
     std::ostringstream oss;
@@ -34,7 +39,7 @@ std::string dumpHex(const char* buf, int len)
             oss << std::endl;
     }
 
-    return oss.str();
+    return std::move(oss.str());
 }
 
 std::string toMB(uint64_t size)
@@ -424,6 +429,16 @@ inline PBYTE detour_gen_jmp_immediate(PBYTE pbCode, PBYTE pbJmpVal)
     PBYTE pbJmpSrc = pbCode + 5;
     *pbCode++ = 0xE9;   // jmp +imm32
     *((INT32*&)pbCode)++ = (INT32)(pbJmpVal - pbJmpSrc);
+
+    int instruction_len = 5;
+    PBYTE pbCodeOrigin = pbCode - instruction_len;
+    DETOUR_TRACE(("detour_gen_jmp_immediate() "
+                "pbJmpVal: %p, pbJmpSrc: %p (%p + %d), offset: %x, "
+                "jmp code(%p ): %s\n"
+                , pbJmpVal, pbJmpSrc, pbCodeOrigin, instruction_len, (INT32)(pbJmpVal - pbJmpSrc)
+                , pbCodeOrigin, dumpHex((const char*)pbCodeOrigin, instruction_len).c_str()
+                ));
+
     return pbCode;
 }
 
@@ -433,6 +448,16 @@ inline PBYTE detour_gen_jmp_indirect(PBYTE pbCode, PBYTE *ppbJmpVal)
     *pbCode++ = 0xff;   // jmp [+imm32]
     *pbCode++ = 0x25;
     *((INT32*&)pbCode)++ = (INT32)((PBYTE)ppbJmpVal - pbJmpSrc);
+
+    int instruction_len = 6;
+    PBYTE pbCodeOrigin = pbCode - instruction_len;
+    DETOUR_TRACE(("detour_gen_jmp_indirect() "
+                "pbJmpVal: (address: %p val: %p), pbJmpSrc: %p (%p + %d), offset: %x, "
+                "jmp code(%p ): %s\n"
+                , (PBYTE)ppbJmpVal, *ppbJmpVal, pbJmpSrc, pbCodeOrigin, instruction_len, (INT32)((PBYTE)ppbJmpVal - pbJmpSrc)
+                , pbCodeOrigin, dumpHex((const char*)pbCodeOrigin, instruction_len).c_str()
+                ));
+
     return pbCode;
 }
 
@@ -626,8 +651,6 @@ const ULONG DETOUR_TRAMPOLINE_CODE_SIZE = 0x150;
 
 struct _DETOUR_TRAMPOLINE
 {
-    // An X64 instuction can be 15 bytes long.
-    // In practice 11 seems to be the limit.
     BYTE               rbCode[30];     // target code + jmp to pbRemain.
     BYTE               cbCode;         // size of moved target code.
     BYTE               cbCodeBreak;    // padding to make debugging easier.
@@ -656,15 +679,63 @@ struct _DETOUR_TRAMPOLINE
 //C_ASSERT(sizeof(_DETOUR_TRAMPOLINE) == 968);
 
 enum {
-    SIZE_OF_JMP = 5
+    SIZE_OF_JMP = 4
 };
+
+inline PBYTE detour_gen_jr_ra_inc(PBYTE pbCode)
+{
+    uint8_t jr_ra_inc[] = {0x32, 0x00, 0x00, 0x08}; // 03e00008 jr ra
+    int jr_ra_inc_len = sizeof(jr_ra_inc);
+    memcpy(pbCode, jr_ra_inc, jr_ra_inc_len);
+    pbCode += jr_ra_inc_len;
+}
 
 inline PBYTE detour_gen_jmp_immediate(PBYTE pbCode, PBYTE pbJmpVal)
 {
-    PBYTE pbJmpSrc = pbCode + 5;
-    *pbCode++ = 0xE9;   // jmp +imm32
-    *((INT32*&)pbCode)++ = (INT32)(pbJmpVal - pbJmpSrc);
-    return pbCode;
+    // The low 28 bits of the target address is the instr_index field shifted left 2bits
+    uint32_t instr_index = ((PtrToUlong(pbJmpVal) & 0xfffffff) >> 2);
+    uint32_t j_code = __J_INSTRUCTION; // J: 6bit, 000010
+    uint32_t j_target_code = j_code | instr_index;
+
+    DETOUR_TRACE(("detour_gen_jmp_immediate()\n"
+                "jmp address: %p, \n"
+                "instr_index: 0x%08x((%p & 0x0fffffff) >> 2)\n"
+                "j_code: 0x%08X ([6 high bit](0000 10) + [26 low bit])\n"
+                "J OP code: 0x%08x( 0x%08x | 0x%08x )\n",
+                pbJmpVal,
+                instr_index, pbJmpVal,
+                j_code,
+                j_target_code, j_code, instr_index));
+
+    memcpy(pbCode, &j_target_code, sizeof(uint32_t));
+    pbCode += sizeof(uint32_t);
+}
+
+inline std::string generate_asm_hard_code()
+{
+    uint32_t array[DETOUR_TRAMPOLINE_CODE_SIZE / sizeof(uint32_t)] = {0};
+    int i = 0;
+
+    // this is a split comment
+    array[i++] = 0x03e0782d;   // 03e0782d    move    t3,ra    
+    array[i++] = 0x04110001;   // 04110001    bal    34    <trampoline_template_mips64+0xc>    
+    array[i++] = 0x00000000;   // 00000000    nop    
+    array[i++] = 0x03e0702d;   // 03e0702d    move    t2,ra    
+    array[i++] = 0x01e0f82d;   // 01e0f82d    move    ra,t3    
+    array[i++] = 0x240c000c;   // 240c000c    li    t0,12    
+    array[i++] = 0x01cc682f;   // 01cc682f    dsubu    t1,t2,t0    
+    array[i++] = 0x240c0018;   // 240c0018    li    t0,24    
+    array[i++] = 0x01ac682f;   // 01ac682f    dsubu    t1,t1,t0    
+    array[i++] = 0xddac0000;   // ddac0000    ld    t0,0(t1)    
+    array[i++] = 0x0180c82d;   // 0180c82d    move    t9,t0    
+    array[i++] = 0x03200008;   // 03200008    jr    t9    
+    array[i++] = 0x00000000;   // 00000000    nop    
+    array[i++] = 0x10000007;   // 10000007    b    7c    <trampoline_exit>    
+    array[i++] = 0x00000000;   // 00000000    nop    
+    // this is a split comment
+
+    std::string hard_code(reinterpret_cast<char*>(array), sizeof(array));
+    return hard_code;
 }
 
 inline PBYTE detour_gen_jmp_indirect(PBYTE pbCode, PBYTE *ppbJmpVal)
@@ -679,7 +750,11 @@ inline PBYTE detour_gen_jmp_indirect(PBYTE pbCode, PBYTE *ppbJmpVal)
 inline PBYTE detour_gen_brk(PBYTE pbCode, PBYTE pbLimit)
 {
     while (pbCode < pbLimit) {
+#if 0
         *pbCode++ = 0xcc;   // brk;
+#else
+        *pbCode++ = 0x00;   // brk;
+#endif
     }
     return pbCode;
 }
@@ -1438,6 +1513,8 @@ static PVOID detour_alloc_region_from_lo(PBYTE pbLo, PBYTE pbHi)
 
     DETOUR_TRACE((" Looking for free region in %p..%p from %p:\n", pbLo, pbHi, pbTry));
     for (; pbTry < pbHi;) {
+        DETOUR_TRACE(("try to found memory [PROT_EXEC | PROT_READ | PROT_WRITE], start address:[%p], size:[0x%x]",
+                pbTry, DETOUR_REGION_SIZE));
         PVOID pv = mmap(pbTry, DETOUR_REGION_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (pv != NULL) {
             DETOUR_TRACE(("detour_alloc_region_from_lo(), call mmap() ok, Looking for free region successed!!!,"
@@ -1678,13 +1755,16 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
     // We need to allocate a new region.
 
     // Round pbTarget down to 64KB block.
+#if 1
     PBYTE origin_pbTarget = pbTarget;
     pbTarget = pbTarget - (PtrToUlong(pbTarget) & 0xffff);
     DETOUR_TRACE(("step 2: Round pbTarget(%p) down to 64KB block, (%p - (%p & 0xffff)) => pbTarget(%p)\n", 
                 origin_pbTarget, origin_pbTarget, origin_pbTarget, pbTarget));
+#endif
 
     PVOID pbTry = NULL;
 
+#if 1
     // Try anything below.
     if (pbTry == NULL) {
         DETOUR_TRACE(("step 3: try to found region from low address(%p) for target(%p)", pLo, pbTarget));
@@ -1702,6 +1782,7 @@ PDETOUR_TRAMPOLINE detour_alloc_trampoline(PBYTE pbTarget) // DETOURS_MIPS64
         }
 #endif
     }
+#endif
 
     // try anything above.
     if (pbTry == NULL) {
@@ -1738,7 +1819,8 @@ static void detour_free_trampoline(PDETOUR_TRAMPOLINE pTrampoline)
 {
     PDETOUR_REGION pRegion = (PDETOUR_REGION)
         ((ULONG_PTR)pTrampoline & ~(ULONG_PTR)0xffff);
-#if defined(DETOURS_X86) || defined(DETOURS_X64) || defined(DETOURS_ARM) || defined(DETOURS_ARM64)
+//#if defined(DETOURS_X86) || defined(DETOURS_X64) || defined(DETOURS_ARM) || defined(DETOURS_ARM64)
+#if defined(DETOURS_X86) || defined(DETOURS_X64) || defined(DETOURS_ARM) || defined(DETOURS_ARM64) || defined(DETOURS_MIPS64)
     if (pTrampoline->IsExecutedPtr != NULL) {
         delete pTrampoline->IsExecutedPtr;
     }
@@ -1751,8 +1833,11 @@ static void detour_free_trampoline(PDETOUR_TRAMPOLINE pTrampoline)
     }
 #endif
     memset(pTrampoline, 0, sizeof(*pTrampoline));
+
+#if 1
     pTrampoline->pbRemain = (PBYTE)pRegion->pFree;
     pRegion->pFree = pTrampoline;
+#endif
 }
 
 static BOOL detour_is_region_empty(PDETOUR_REGION pRegion)
@@ -1971,6 +2056,13 @@ extern "C" {
 extern "C" void Trampoline_ASM_x86();
 #endif
 
+#ifdef DETOURS_MIPS64
+extern "C" {
+    extern void* trampoline_data_mips64;
+    extern void(*trampoline_template_mips64)();
+}
+#endif
+
 #ifdef DETOURS_ARM
 //extern "C" void Trampoline_ASM_ARM();
 //extern "C" void Trampoline_ASM_ARM_T();
@@ -1982,6 +2074,7 @@ extern "C" void Trampoline_ASM_x86();
 
 #if defined(DETOURS_X64) || defined(DETOURS_X86)
 void* trampoline_template() {
+
 
     uintptr_t ret = 0;
 #if defined(DETOURS_X64)
@@ -2024,6 +2117,44 @@ ULONG GetTrampolineSize()
     return ___TrampolineSize;
 }
 #endif
+
+#ifdef DETOURS_MIPS64
+void* trampoline_template()
+{
+    uintptr_t ret = 0;
+    ret = reinterpret_cast<uintptr_t>(&trampoline_template_mips64);
+    asm("" : "=rm"(ret)); // force compiler to abandon its assumption that ret is aligned
+    //ret &= ~1;
+    return reinterpret_cast<void*>(ret);
+}
+
+void* trampoline_data()
+{
+#ifdef DETOURS_MIPS64
+    return (&trampoline_data_mips64);
+#endif
+    return nullptr;
+}
+
+UCHAR* DetourGetTrampolinePtr()
+{
+    UCHAR* Ptr = (UCHAR*)trampoline_template();
+    return Ptr;
+}
+
+ULONG GetTrampolineSize()
+{
+    if (___TrampolineSize != 0)
+        return ___TrampolineSize;
+    uint32_t code_size_ = reinterpret_cast<uintptr_t>(trampoline_data()) -
+        reinterpret_cast<uintptr_t>(trampoline_template());
+
+    ___TrampolineSize = code_size_;
+    return ___TrampolineSize;
+}
+#endif // DETOURS_MIPS64
+
+
 #if defined(DETOURS_ARM) || defined(DETOURS_ARM64)
 
 extern "C" {
@@ -2126,6 +2257,10 @@ ULONGLONG BarrierIntro(DETOUR_TRAMPOLINE* InHandle, void* InRetAddr, void** InAd
         InHandle, InRetAddr, InAddrOfRetAddr));
 
 #if defined(DETOURS_X64) || defined(DETOURS_ARM) || defined(DETOURS_ARM64)
+    InHandle = (DETOUR_TRAMPOLINE*)((PBYTE)(InHandle)-(sizeof(DETOUR_TRAMPOLINE) - DETOUR_TRAMPOLINE_CODE_SIZE));
+#endif
+
+#if defined(DETOURS_MIPS64)
     InHandle = (DETOUR_TRAMPOLINE*)((PBYTE)(InHandle)-(sizeof(DETOUR_TRAMPOLINE) - DETOUR_TRAMPOLINE_CODE_SIZE));
 #endif
 
@@ -2689,6 +2824,10 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
             *o->ppbPointer = o->pbTarget;
 #endif // DETOURS_X64
 
+#ifdef DETOURS_MIPS64
+            *o->ppbPointer = o->pbTarget;
+#endif // DETOURS_MIPS64
+
 #ifdef DETOURS_ARM
             *o->ppbPointer = DETOURS_PBYTE_TO_PFUNC(o->pbTarget);
 #endif // DETOURS_ARM
@@ -2785,6 +2924,44 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
             *o->ppbPointer = o->pTrampoline->rbCode;
             UNREFERENCED_PARAMETER(pbCode);
 #endif // DETOURS_X86
+
+#ifdef DETOURS_MIPS64
+            PBYTE trampoline = DetourGetTrampolinePtr();
+            const ULONG TrampolineSize = GetTrampolineSize();
+            if (TrampolineSize > DETOUR_TRAMPOLINE_CODE_SIZE) {
+                //error, handle this better
+                DETOUR_TRACE(("detours: TrampolineSize > DETOUR_TRAMPOLINE_CODE_SIZE (%08X != %08X)",
+                    TrampolineSize, DETOUR_TRAMPOLINE_CODE_SIZE));
+                LOG(FATAL) << "Invalid trampoline size: " << TrampolineSize;
+            }
+
+            PBYTE endOfTramp = (PBYTE)&o->pTrampoline->rbTrampolineCode;
+#if 1
+            // hard code trampoline assembly code
+            std::string asm_hard_code = generate_asm_hard_code();
+            memcpy(o->pTrampoline->rbTrampolineCode, asm_hard_code.c_str(), TrampolineSize);
+            memcpy(endOfTramp, asm_hard_code.c_str(), TrampolineSize);
+#else
+            memcpy(endOfTramp, trampoline, TrampolineSize);
+#endif
+
+            o->pTrampoline->HookIntro = (PVOID)BarrierIntro;
+            o->pTrampoline->HookOutro = (PVOID)BarrierOutro;
+            o->pTrampoline->Trampoline = endOfTramp;
+            o->pTrampoline->OldProc = o->pTrampoline->rbCode;
+            o->pTrampoline->HookProc = o->pTrampoline->pbDetour;
+            o->pTrampoline->IsExecutedPtr = new int();
+
+#if 0
+            detour_gen_jmp_indirect(o->pTrampoline->rbCodeIn, (PBYTE*)&o->pTrampoline->Trampoline);
+#else
+            detour_gen_jmp_immediate(o->pTrampoline->rbCodeIn, (PBYTE)(o->pTrampoline->Trampoline));
+#endif
+            PBYTE pbCode = detour_gen_jmp_immediate(o->pbTarget, o->pTrampoline->rbCodeIn);
+            pbCode = detour_gen_brk(pbCode, o->pTrampoline->pbRemain);
+            *o->ppbPointer = o->pTrampoline->rbCode;
+            UNREFERENCED_PARAMETER(pbCode);
+#endif // DETOURS_MIPS64
 
 #ifdef DETOURS_ARM
             UCHAR * trampoline = DetourGetArmTrampolinePtr(o->pTrampoline->IsThumbTarget);
@@ -2907,6 +3084,13 @@ LONG DetourTransactionCommitEx(_Out_opt_ PVOID **pppFailedPointer)
                 o->pTrampoline->pbDetour));
             DETOUR_TRACE(("\n"));
 #endif // DETOURS_IA64
+
+#if 0
+            std::string trampoline_string = dumpTrampoline(o->pTrampoline);
+            DETOUR_TRACE(("dump trampoline:\n%s\n", trampoline_string.c_str()));
+#else
+            dumpTrampoline(o->pTrampoline);
+#endif
 
             AddTrampolineToGlobalList(o->pTrampoline);
         }
@@ -3247,7 +3431,7 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
 
         ULONG op = fetch_thumb_opcode(pbSrc);
         if (op == 0xbf00) {
-            op = fetch_thumb_opcode(pbSrc + 2);
+            op = fetch_t.c_str()humb_opcode(pbSrc + 2);
             if (op == 0xf8dff000) { // LDR PC,[PC]
                 *((PUSHORT&)pbTrampoline)++ = *((PUSHORT&)pbSrc)++;
                 *((PULONG&)pbTrampoline)++ = *((PULONG&)pbSrc)++;
@@ -3268,12 +3452,23 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
     }
 #endif
 
-    std::string Trampoline_code = dumpHex((const char*)pbTrampoline, 32);
+    std::string pbTrampoline_code = dumpHex((const char*)pbTrampoline, 32);
     std::string pbSrc_code = dumpHex((const char*)pbSrc, 32);
     std::string pDetour_code = dumpHex((const char*)pDetour, 32);
-    DETOUR_TRACE(("Trampoline_code(%p):\n%s\n", pbTrampoline, Trampoline_code.c_str()));
-    DETOUR_TRACE(("pbSrc_code(%p):\n%s\n", pbSrc, pbSrc_code.c_str()));
-    DETOUR_TRACE(("pDetour_code(%p):\n%s\n", pDetour, pDetour_code.c_str()));
+    DETOUR_TRACE(("pbTrampoline code(%p):\n%s\n", pbTrampoline, pbTrampoline_code.c_str()));
+    DETOUR_TRACE(("pbSrc code(%p):\n%s\n", pbSrc, pbSrc_code.c_str()));
+    DETOUR_TRACE(("pDetour code(%p):\n%s\n", pDetour, pDetour_code.c_str()));
+
+#ifdef DETOURS_MIPS64
+    auto CopyNInstruction = [](PVOID pDst, PVOID pSrc, size_t ins_size) -> PVOID
+    {
+        int ins_len = 4;
+        int ins_bytes = ins_size * ins_len;
+        memcpy(pDst, pSrc, sizeof(char) * ins_bytes);
+
+        return pSrc + ins_bytes;
+    };
+#endif
 
     while (cbTarget < cbJump) {
         PBYTE pbOp = pbSrc;
@@ -3285,7 +3480,11 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
         DETOUR_TRACE((" DetourCopyInstruction(%p,%p)\n",
             pbTrampoline, pbSrc));
         pbSrc = (PBYTE)
+#ifndef DETOURS_MIPS64
             DetourCopyInstruction(pbTrampoline, (PVOID*)&pbPool, pbSrc, NULL, &lExtra);
+#else
+            CopyNInstruction(pbTrampoline, pbSrc, 2);
+#endif
         DETOUR_TRACE((" DetourCopyInstruction() = %p (%d bytes)\n",
             pbSrc, (int)(pbSrc - pbOp)));
         pbTrampoline += (pbSrc - pbOp) + lExtra;
@@ -3295,7 +3494,7 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
         nAlign++;
 
         std::string rbCode = dumpHex((const char*)pTrampoline->rbCode, 32);
-        DETOUR_TRACE(("rbCode:\n%s\n", rbCode.c_str()));
+        DETOUR_TRACE(("rbCode(%p):\n%s\n", pTrampoline->rbCode, rbCode.c_str()));
 
         if (nAlign >= ARRAYSIZE(pTrampoline->rAlign)) {
             break;
@@ -3316,6 +3515,25 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
         pbSrc += cFiller;
         cbTarget = (LONG)(pbSrc - pbTarget);
     }
+
+#if 1
+    {
+        DETOUR_TRACE((" detours: rAlign ["));
+        LONG n = 0;
+        for (n = 0; n < ARRAYSIZE(pTrampoline->rAlign); n++) {
+            if (pTrampoline->rAlign[n].obTarget == 0 &&
+                pTrampoline->rAlign[n].obTrampoline == 0) {
+                break;
+            }
+            DETOUR_TRACE((" %d/%d",
+                pTrampoline->rAlign[n].obTarget,
+                pTrampoline->rAlign[n].obTrampoline
+                ));
+
+        }
+        DETOUR_TRACE((" ]\n"));
+    }
+#endif
 
 #if DETOUR_DEBUG
     {
@@ -3366,7 +3584,11 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
     }
 #endif // !DETOURS_IA64
 
+//#ifndef DETOURS_MIPS64
     pTrampoline->pbRemain = pbTarget + cbTarget;
+//#else
+    //pTrampoline->pbRemain = pbTarget + cbTarget + 4; // 4 byte is nop, below j(jmp) instruction
+//#endif
     pTrampoline->pbDetour = (PBYTE)pDetour;
 
     InsertTraceHandle(pTrampoline);
@@ -3422,6 +3644,12 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
     pbTrampoline = detour_gen_brk(pbTrampoline, pbPool);
 #endif // DETOURS_X86
 
+#ifdef DETOURS_MIPS64
+    pbTrampoline = detour_gen_jmp_immediate(pbTrampoline, pTrampoline->pbRemain);
+    //pbTrampoline = detour_gen_jr_ra_inc(pbTrampoline);
+    pbTrampoline = detour_gen_brk(pbTrampoline, pbPool);
+#endif // DETOURS_MIPS64
+
 #ifdef DETOURS_ARM
     pbTrampoline = detour_gen_jmp_immediate(pbTrampoline + pTrampoline->IsThumbTarget, &pbPool, pTrampoline->pbRemain);
     pbTrampoline = detour_gen_brk(pbTrampoline, pbPool);
@@ -3433,6 +3661,12 @@ LONG DetourAttachEx(_Inout_ PVOID *ppPointer,
 #endif // DETOURS_ARM64
 
     (void)pbTrampoline;
+#if 0
+    std::string trampoline_string = dumpTrampoline(pTrampoline);
+    DETOUR_TRACE(("dump trampoline:\n%s\n", trampoline_string.c_str()));
+#else
+    dumpTrampoline(pTrampoline);
+#endif
 
     DWORD dwOld = PAGE_EXECUTE_READ;
 
@@ -3707,4 +3941,55 @@ void library_exit()
     DetourCriticalFinalize();    
     DetourBarrierProcessDetach();
 }
+
+std::string dumpTrampoline(const _DETOUR_TRAMPOLINE* trampoline)
+{
+    std::ostringstream oss;
+
+    oss << "-------------------- dump begin dumpTrampoline --------------------" << std::endl;
+    oss << "trampoline address: " << trampoline << std::endl;
+    oss << "\nrbCode(" << std::hex << (void*)trampoline->rbCode << "), size: " << std::dec << sizeof(trampoline->rbCode) << " "
+            << "(target code + jmp to pbRemain.) "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->rbCode, sizeof(trampoline->rbCode)) << "\n\n"
+
+        << "cbCode: " << trampoline->cbCode << " \n"
+        << "cbCodeBreak: " << trampoline->cbCodeBreak << " \n\n"
+
+        << "rbRestore(" << std::hex << (void*)trampoline->rbRestore << "), size: " << std::dec << sizeof(trampoline->rbRestore) << " "
+            << "(original target code.) "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->rbRestore, sizeof(trampoline->rbRestore)) << "\n\n"
+
+        << "cbRestore: " << trampoline->cbRestore << " \n"
+        << "cbRestoreBreak: " << trampoline->cbRestoreBreak << " \n\n"
+
+        << "pbRemain: " << std::hex << (void*)trampoline->pbRemain << " \n"
+            << "(first instruction after moved code. [free list]) "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->pbRemain, 32) << "\n"
+
+        << "pbDetour: " << std::hex << (void*)trampoline->pbDetour << " \n"
+            << "(first instruction of detour function.) "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->pbDetour, 32) << "\n"
+
+        << "rbCodeIn(" << std::hex << (void*)trampoline->rbCodeIn << "), size: " << std::dec << sizeof(trampoline->rbCodeIn) << " "
+            << "(jmp [pbDetour])"
+            << "hex dump:\n" << dumpHex((const char*)trampoline->rbCodeIn, sizeof(trampoline->rbCodeIn)) << "\n\n"
+
+        << "Callback: " << std::hex << trampoline->Callback << " \n"
+        << "Trampoline: " << std::hex << trampoline->Trampoline << " \n"
+        << "HookIntro: " << std::hex << trampoline->HookIntro << " \n"
+        << "OldProc: " << std::hex << (void*)trampoline->OldProc << " \n"
+        << "HookProc: " << std::hex << trampoline->HookProc << " \n"
+        << "HookOutro: " << std::hex << trampoline->HookOutro << " \n"
+        << "IsExecutedPtr: " << std::hex << trampoline->IsExecutedPtr << " \n\n"
+
+        << "rbTrampolineCode(" << std::hex << (void*)trampoline->rbTrampolineCode << "), size: "
+            << std::dec << DETOUR_TRAMPOLINE_CODE_SIZE << " "
+            << "hex dump:\n" << dumpHex((const char*)trampoline->rbTrampolineCode, DETOUR_TRAMPOLINE_CODE_SIZE) << "\n"
+        ;
+    oss << "-------------------- dump end dumpTrampoline --------------------" << std::endl;
+
+    std::cout << oss.str() << std::endl;
+    return oss.str();
+}
+
 //  End of File

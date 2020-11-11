@@ -1,10 +1,7 @@
 #include <cstdio>
 #define _X86_
-#if 0
-#include "detours.h"
-#else
+//#include "detours.h"
 #include <skyguard/LinuxDetours/detours/detours.h>
-#endif
 #include <stdio.h>
 #include <unistd.h>
 #include <glog/logging.h>
@@ -32,8 +29,11 @@
 
 unsigned int sleep_detour(unsigned int seconds)
 {
+    const char* str = "sleep_detour()";
+    write(2, str, strlen(str));
     LOG(INFO) << "detours_test: Called sleep_detour";
-    return sleep(seconds);
+    //return sleep(seconds);
+    return 0;
 }
 unsigned int test_detour_b(unsigned int seconds, unsigned int a, unsigned int b, unsigned int c, unsigned int d, unsigned int e)
 {
@@ -53,10 +53,10 @@ VOID* test_runner(void*)
     LOG(INFO) << "detours_test: Function 'test_detour_b' returned " << test_detour_b(1, 2, 3, 4, 5, 6);
 #endif
 
-    LOG(INFO) << "detours_test: Calling sleep for 1 second";
     sleep(1);
-    LOG(INFO) << "detours_test: Calling sleep again for 2 seconds";
+    LOG(INFO) << "detours_test: Calling sleep for 1 second";
     sleep(2);
+    LOG(INFO) << "detours_test: Calling sleep again for 2 seconds";
     
     LOG(INFO)  << "detours_test: Done sleeping\n";
 
@@ -136,55 +136,13 @@ bool get_dylib_functions(const std::string& dylib_path, std::map<std::string, vo
 
 int main(int argc, char * argv[])
 {
+    sleep(1);
     test_glog(argv[0]);
 
 #if 0
     std::cout << "main() start long sleeping" << std::endl;
     sleep(10000000);
-
-    return 0;
-
-#if 0
-    auto trampoline = detour_alloc_trampoline((PBYTE)sleep);
-    if (trampoline != NULL)
-        LOG(INFO) << "call detour_alloc_trampoline() success for sleep()";
-    else
-        LOG(INFO) << "call detour_alloc_trampoline() failed for sleep()";
-
-    return 0;
-#else
-    {
-        std::vector<std::string> dylibs =
-        {
-            "/lib64/libc.so.6",
-            "/lib64/libgtk.so"
-        };
-
-        for (const auto& dylib : dylibs)
-        {
-            std::map<std::string, void*> functions;
-            if (get_dylib_functions(dylib, functions))
-            {
-                LOG(INFO) << "get dylib:[" << dylib << "] info" << std::endl;
-                for (const auto fun : functions)
-                {
-                    LOG(INFO) << "    " << "fun:[" << fun.first << "], entry point:[" << std::hex << fun.second << "]" << std::endl;
-                    auto trampoline = detour_alloc_trampoline((PBYTE)fun.second);
-
-                    if (trampoline != NULL)
-                        LOG(INFO) << "call detour_alloc_trampoline() success for fun" << fun.first << "()"
-                            << "trampoline address:[" << std::hex << trampoline << "]";
-                    else
-                        LOG(INFO) << "call detour_alloc_trampoline() failed for fun" << fun.first << "()";
-                }
-            }
-        }
-    }
 #endif
-
-    return 0;
-#endif
-
 
     DetourBarrierProcessAttach();
     DetourCriticalInitialize();
