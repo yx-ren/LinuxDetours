@@ -45,7 +45,7 @@ bool SGDetourImpl::installHook(void* SrcEntryPoint, void* HookEntryPoint)
         return false;
     }
 
-    ret = DetourSetExclusiveACL(new ULONGuint64_t(), 1, detour_handle.get());
+    ret = DetourSetExclusiveACL(new ULONG(), 1, detour_handle.get());
     if (ret != 0)
     {
         LOG(INFO) << "SGDetourImpl::installHook() call DetourSetExclusiveACL() failed, error code:[ " << ret << "] "
