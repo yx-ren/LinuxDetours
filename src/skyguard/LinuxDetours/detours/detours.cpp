@@ -3988,7 +3988,7 @@ std::string dumpTrampoline(const _DETOUR_TRAMPOLINE* trampoline)
         ;
     oss << "-------------------- dump end dumpTrampoline --------------------" << std::endl;
 
-    std::cout << oss.str() << std::endl;
+    std::cerr << oss.str() << std::endl;
     return oss.str();
 }
 
