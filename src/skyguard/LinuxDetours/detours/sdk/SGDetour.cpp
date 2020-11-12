@@ -1,6 +1,8 @@
 #include <skyguard/LinuxDetours/detours/sdk/SGDetour.h>
 #include <skyguard/LinuxDetours/detours/sdk/SGDetourImpl.h>
 
+SGLD_BEGIN
+
 SGDetour::SGDetour()
 {
     mImpl = std::make_shared<SGDetourImpl>();
@@ -40,3 +42,5 @@ const void* SGDetour::getHookAddress() const
 {
     return mImpl->getHookAddress();
 }
+
+SGLD_END

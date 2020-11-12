@@ -2,8 +2,10 @@
 #define __SG_DETOUR_IMPL_H__
 
 #include <memory>
+#include <skyguard/LinuxDetours/common.h>
 #include <skyguard/LinuxDetours/detours/detours.h>
 
+SGLD_BEGIN
 class SGDetourImpl
 {
 public:
@@ -31,5 +33,6 @@ private:
     void* mHookEntryPoint;
 };
 typedef std::shared_ptr<SGDetourImpl> SGDetourImplSPtr;
+SGLD_END
 
 #endif

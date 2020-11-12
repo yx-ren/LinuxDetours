@@ -1,8 +1,10 @@
 #include <thread>
 #include <iostream>
-#include <glog/logging.h>
 #include <functional>
+#include <glog/logging.h>
 #include <skyguard/LinuxDetours/detours/sdk/SGDetour.h>
+
+using namespace SGLD_NAMESPACE;
 
 void* test_runner(int n)
 {

@@ -1,6 +1,7 @@
 #include <glog/logging.h>
 #include <skyguard/LinuxDetours/detours/sdk/SGDetourImpl.h>
 
+SGLD_BEGIN
 SGDetourImpl::SGDetourImpl()
     : mHookHandle(NULL)
     , mSrcEntryPoint(NULL)
@@ -82,3 +83,4 @@ const void* SGDetourImpl::getHookAddress() const
 {
     return mHookEntryPoint;
 }
+SGLD_END
