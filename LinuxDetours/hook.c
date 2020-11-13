@@ -61,9 +61,9 @@ static void __attribute__((constructor)) ctor()
                     left_sec--;
                 }
 
-                const char* libs_path = "/home/renyunxiang/work/github/LinuxDetours/LinuxDetours/config/dylibs";
                 std::vector<std::string> dylibs;
-                if (!parse_dylibs_path(libs_path, dylibs))
+                std::string cfg = "./config/dylibs";
+                if (!parse_dylibs_path(cfg, dylibs))
                 {
                     std::cerr << "call parse_dylibs_path() failed" << std::endl;
                     return;

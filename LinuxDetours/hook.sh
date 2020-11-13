@@ -13,4 +13,5 @@ if [ ! -f $EXEC_FILE ]; then
 fi
 
 echo "detected exec file:[$EXEC_FILE]"
-LD_PRELOAD="/home/renyunxiang/work/github/LinuxDetours/LinuxDetours/hook.so" LD_LIBRARY_PATH=/usr/local/lib/ $EXEC_FILE
+curr_dir=$(pwd)
+LD_PRELOAD="$curr_dir/hook.so" LD_LIBRARY_PATH=/usr/local/lib/ $EXEC_FILE
