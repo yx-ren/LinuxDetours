@@ -55,6 +55,8 @@ bool SGDetourImpl::installHook(void* SrcEntryPoint, void* HookEntryPoint)
         return false;
     }
 
+    mSrcEntryPoint = SrcEntryPoint;
+    mHookEntryPoint = HookEntryPoint;
     mHookHandle = detour_handle;
 
     return true;
