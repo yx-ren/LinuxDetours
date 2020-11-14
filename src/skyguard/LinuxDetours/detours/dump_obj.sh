@@ -33,7 +33,7 @@ do
     nm $obj_file > $nm_dump
 
     echo "objdump dump -> $obj_dump"
-    objdump -D $obj_file > $obj_dump
+    objdump -D -j .text $obj_file > $obj_dump
 
     echo "elfdump dump -> $elf_dump"
     readelf -a $obj_file > $elf_dump

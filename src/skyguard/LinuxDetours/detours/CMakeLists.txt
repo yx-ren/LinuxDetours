@@ -26,7 +26,9 @@ add_custom_command(
         ${CMAKE_CURRENT_SOURCE_DIR}/${TRAMPOLINE_ASM} -o ${CMAKE_CURRENT_SOURCE_DIR}/${TRAMPOLINE_ASM}.o
         && ${CMAKE_CURRENT_SOURCE_DIR}/dump_obj.sh ${CMAKE_CURRENT_SOURCE_DIR}/${TRAMPOLINE_ASM}.o
         && ${CMAKE_CURRENT_SOURCE_DIR}/gen_ins.sh ${CMAKE_CURRENT_SOURCE_DIR}/${TRAMPOLINE_ASM}.o.obj.dump
-        && ${CMAKE_CURRENT_SOURCE_DIR}/replace_hard_code.sh ${CMAKE_CURRENT_SOURCE_DIR}/detours.cpp
+        && ${CMAKE_CURRENT_SOURCE_DIR}/replace_hard_code.sh
+           ${CMAKE_CURRENT_SOURCE_DIR}/${TRAMPOLINE_ASM}.o.obj.dump.disassemble
+           ${CMAKE_CURRENT_SOURCE_DIR}/detours.cpp
     COMMENT "Now Generating mips asm files..."
     COMMENT "build dir:[ ${CMAKE_CURRENT_BINARY_DIR} ]"
     )

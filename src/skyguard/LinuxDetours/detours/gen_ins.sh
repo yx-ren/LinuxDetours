@@ -17,14 +17,33 @@ if [ $# -ge 2 ];then
     echo "disassemble function name:[ $FUNCTION_NAME ]"
 fi
 
-start_line=$(grep -n -P $FUNCTION_NAME $OBJ_FILE | head -n 1 | cut -d ':' -f 1)
-echo "function:[ $FUNCTION_NAME ], start line:[ $start_line ]"
+start_line=$(grep -n -P "<\w+>" $OBJ_FILE | head -n 1 | cut -d ':' -f 1)
+echo "start line:[ $start_line ]"
+objdump_ins=$(sed -n "$start_line, $ p" $OBJ_FILE | awk \
+                        ' \
+                        { \
+                            if (NF < 3 || length($2) != 8)
+                                next
+
+                            comments = "// "
+                            inc = $2;
+                            for (i = 1; i <= NF; i++)
+                            {
+                                comments = (comments""$i"    ");
+                            }
+                            printf("    array[i++] = 0x%s;   %s\n", inc, comments);
+                        } \
+                        ' \
+             )
+echo "$objdump_ins" | tee "$OBJ_FILE.disassemble"
+exit 0
 
 OBJ_START_LINES=$(grep -n -P "\<.*\>:" $OBJ_FILE | cut -d ':' -f 1)
 FUNCTION_START_LINES=($OBJ_START_LINES) # to array
 for ((i = 0; i != ${#FUNCTION_START_LINES[@]}; i++))
 do
     line=${FUNCTION_START_LINES[i]}
+    echo "line:[$line]"
     if [ $line == $start_line ]; then
         next_line=${FUNCTION_START_LINES[i+1]}
         end_line=$[$next_line - 1]

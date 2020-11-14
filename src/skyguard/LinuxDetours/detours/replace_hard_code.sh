@@ -1,19 +1,19 @@
 #/bin/bash
-hard_code_file=trampoline_template_mips64.disassemble
-if [ $# -lt 1 ]; then
-    echo "usage:$0 [cpp_file] [hard code file (default = $hard_code_file)]"
-    exit 0
+if [ $# -lt 2 ]; then
+    echo "usage:$0 [hard code file] [cpp_file]"
+    exit -1
 fi
 
-source_file=$1
+hard_code_file=$1
+if [ ! -f $hard_code_file ]; then
+    echo "disassemble file:[$hard_code_file] not existed"
+    exit -1
+fi
+
+source_file=$2
 if [ ! -f $source_file ]; then
-    echo "file:[$source_file] not existed"
-    exit 0
-fi
-
-if [ $# -ge 2 ];then
-    hard_code_file=$2
-    echo "disassemble file:[ $hard_code_file ]"
+    echo "source file:[$source_file] not existed"
+    exit -1
 fi
 
 split_line_tag="this is a split comment"
