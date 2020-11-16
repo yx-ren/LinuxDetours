@@ -29,11 +29,8 @@
 
 unsigned int sleep_detour(unsigned int seconds)
 {
-    const char* str = "sleep_detour()";
-    write(2, str, strlen(str));
-    LOG(INFO) << "detours_test: Called sleep_detour";
-    //return sleep(seconds);
-    return 0;
+    LOG(INFO) << "detours_test: Called sleep_detour()";
+    return sleep(seconds);
 }
 unsigned int test_detour_b(unsigned int seconds, unsigned int a, unsigned int b, unsigned int c, unsigned int d, unsigned int e)
 {
