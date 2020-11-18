@@ -1693,13 +1693,14 @@ static PVOID detour_alloc_region_in_boundary(PBYTE low, PBYTE high, PBYTE target
 {
     DETOUR_TRACE(("Looking for free region in boundary [ %p , %p ] for target [%p]:\n", low, high, target));
     int retry_times = 0;
-    int max_retry_times = 100;
+    int max_retry_times = 10000;
     PBYTE pbTry = low;
+    bool found_region = false;
     while (pbTry < high)
     {
         if (retry_times > max_retry_times)
         {
-            DETOUR_TRACE(("max retry times has been reached(%d), no free region have been found for target:[%p]",
+            DETOUR_TRACE(("max retry times has been reached(%d)!!!, no free region have been found for target:[%p]",
                     max_retry_times, target));
             return NULL;
         }
@@ -1709,19 +1710,49 @@ static PVOID detour_alloc_region_in_boundary(PBYTE low, PBYTE high, PBYTE target
         PVOID pv = mmap(pbTry, DETOUR_REGION_SIZE, PROT_EXEC | PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (pv != NULL)
         {
-            DETOUR_TRACE(("detour_alloc_round_down_to_region() call mmap() ok, Looking for free region successed!!!, "
+            DETOUR_TRACE(("detour_alloc_round_down_to_region() call mmap() ok, Looking for free region successed, "
                     "in boundary [ %p , %p ] for target [%p], mapped area pointer %p\n",
                      low, high, pbTry, pv));
-            return pv;
+
+            if (__IS_OUT_BOUNDARY__((uint64_t)low, (uint64_t)pv, (uint64_t)high))
+            {
+                DETOUR_TRACE(("region alloc successed but trampoline address out of boundary, "
+                        "target:%p, trampoline:%p, low:%p, up:%p, "
+                        "offset:[%s], "
+                        "current retry times:[%d], max retry times:[%d]"
+                        , target, pv, low, high
+                        , (calculteOffset((uint64_t)target, (uint64_t)low, (uint64_t)high, (uint64_t)pv)).c_str()
+                        , retry_times, max_retry_times
+                        ));
+
+                if (munmap(pv, DETOUR_REGION_SIZE) == -1)
+                {
+                    DETOUR_TRACE(("detour_alloc_round_down_to_region() call munmap() failed, release free region failed!!!, "
+                                "in boundary [ %p , %p ] for target [%p], mapped area pointer %p\n",
+                                low, high, pbTry, pv));
+                }
+            }
+            else
+            {
+                found_region =true;
+            }
         }
         else
         {
             DETOUR_TRACE(("detour_alloc_round_down_to_region() call mmap() failed, Looking for free region failed!!!, "
                     "in boundary [ %p , %p ] for target [%p], current retry times:[%d]",
                      low, high, pbTry, retry_times));
-            retry_times++;
         }
 
+        if (found_region)
+        {
+            DETOUR_TRACE(("detour_alloc_round_down_to_region() successed to found free region!!!, "
+                    "in boundary [ %p , %p ] for target [%p], mapped area pointer %p\n",
+                     low, high, pbTry, pv));
+            return pv;
+        }
+
+        retry_times++;
         pbTry += DETOUR_REGION_SIZE;
     }
 
