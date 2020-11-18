@@ -8,7 +8,7 @@ using namespace SGLD_NAMESPACE;
 
 void* test_runner(int n)
 {
-    for (int i = 0; i != n; i++)
+    for (int i = 1; i <= n; i++)
     {
         LOG(INFO) << "test_runner: calling sleep() for :[ " << i << " ] second";
         sleep(i);
@@ -19,8 +19,8 @@ void* test_runner(int n)
 
 unsigned int sleep_detour(unsigned int seconds)
 {
-    LOG(INFO) << "hook!!!, trigger sleep_detour(), arguments:[ " << seconds << " ]";
-    return 0;
+    LOG(INFO) << "hook!!!, trigger sleep_detour(), arguments:[ " << seconds << " ], start to sleep:[" << seconds << "] sec";
+    return sleep(seconds);
 }
 
 int main(int argc, const char* argv[])

@@ -63,8 +63,12 @@ trampoline_template_mips64:
 
         # -------------------- #
 
+
+        # -------------------- #
+
         # store the registers and some value into stack
-        daddiu  $sp, $sp, -128
+        ld $t3, ($sp)           # protected $sp 8 byte
+        daddiu  $sp, $sp, -256
         sd $ra, (0 * 8)($sp)    # save the Remain address
         sd $a0, (1 * 8)($sp)    # protected $a0 register (Arguments to functions)
         sd $a1, (2 * 8)($sp)    # protected $a1 register (Arguments to functions)
@@ -73,6 +77,17 @@ trampoline_template_mips64:
         sd $a4, (5 * 8)($sp)    # protected $a4 register (Arguments to functions)
         sd $t1, (6 * 8)($sp)    # save the base line(_DETOUR_TRAMPOLINE.rbTrampolineCode)
         sd $t9, (7 * 8)($sp)    # save the $t9 register
+        sd $sp, (8 * 8)($sp)    # save the $sp register
+        sd $s0, (9 * 8)($sp)   #
+        sd $s1, (10 * 8)($sp)   #
+        sd $s2, (11 * 8)($sp)   #
+        sd $s3, (12 * 8)($sp)   #
+        sd $s4, (13 * 8)($sp)   #
+        sd $s5, (14 * 8)($sp)   #
+        sd $s6, (15 * 8)($sp)   #
+        sd $s7, (16 * 8)($sp)   #
+        sd $s8, (17 * 8)($sp)   #
+        sd $t3, (18 * 8)($sp)   # import!!!, $ra will override this region
 
 ###################################################################################### call hook handler or original method...
 ## call NET intro
@@ -91,7 +106,7 @@ trampoline_template_mips64:
     move $a1, $ra           # a1 save the return address
 
     # get arg3
-    daddiu $a2, $sp, 128    # a2 save the origin rsp
+    daddiu $a2, $sp, 256    # a2 save the origin rsp
 
     # get [NETIntro] address
     ld $13, (6 * 8)($sp)    # restore base line to $t1 
@@ -120,13 +135,35 @@ trampoline_template_mips64:
     ld $a3, (4 * 8)($sp)
     ld $a4, (5 * 8)($sp)
     ld $t9, (7 * 8)($sp)
-    daddiu  $sp, $sp, 128
+    ld $sp, (8 * 8)($sp)
+    ld $s0, (9 * 8)($sp)   #
+    ld $s1, (10 * 8)($sp)   #
+    ld $s2, (11 * 8)($sp)   #
+    ld $s3, (12 * 8)($sp)   #
+    ld $s4, (13 * 8)($sp)   #
+    ld $s5, (14 * 8)($sp)   #
+    ld $s6, (15 * 8)($sp)   #
+    ld $s7, (16 * 8)($sp)   #
+    ld $s8, (17 * 8)($sp)   #
+    daddiu  $sp, $sp, 256
 
     # -------------------- #
 
     jr $12                  # jr $t0
 
 call_hook_handler:
+## adjust return address
+#lea %rax, [%rip + call_net_outro]
+#mov %r9, [%rsp + 32 + 8 * 16 + 6 * 8 + 8] ## %r9 = original %rsp
+#mov qword ptr [%r9], %rax
+
+    # get pc instruction
+    bal 4
+    move $14,$31            # move t2,ra
+#daddiu $13, $14, -12    # t1 = t2 - 12 // $t1 save the base line, 12 is offset from base line to PC
+    daddiu $ra, $14, 32    # t1 = t2 - 12 // $t1 save the base line, 12 is offset from base line to PC
+#ld $ra, call_net_outro
+
     # get Hook Proc Address and saved into $t9 register
     ld $13, (6 * 8)($sp)    # restore base line to t1 
     daddiu $13, $13, -24    # t1 -= 24 // $t1 save the address of the [NewProc] address
@@ -135,20 +172,68 @@ call_hook_handler:
 
     j trampoline_exit
 
+call_net_outro: ## this is where the handler returns...
+
+    # get arg1
+    ld $a0, (6 * 8)($sp)    # a0 save restore base line
+
+    # get arg2
+    daddiu $a1, $sp, 256    # a1 save the origin rsp
+
+    # get [NETOutro] address
+    ld $13, (6 * 8)($sp)    # restore base line to $t1 
+    daddiu $13, $13, -16    # t1 -= 16 // $t1 save the address of the [NETOutro] address
+    ld $12, 0($13)          # ld t0, t1 // read 8 byte from $t1, t0 save the [NETOutro] address
+
+    # call Hook->NETOutro(Hook, InitialRSP)
+    move $t9, $12
+    jalr $t9
+
+    # return
+    ld $ra, (0 * 8)($sp)
+    ld $a0, (1 * 8)($sp)
+    ld $a1, (2 * 8)($sp)
+    ld $a2, (3 * 8)($sp)
+    ld $a3, (4 * 8)($sp)
+    ld $a4, (5 * 8)($sp)
+    ld $t9, (7 * 8)($sp)
+    ld $s0, (9 * 8)($sp)   #
+    ld $s1, (10 * 8)($sp)   #
+    ld $s2, (11 * 8)($sp)   #
+    ld $s3, (12 * 8)($sp)   #
+    ld $s4, (13 * 8)($sp)   #
+    ld $s5, (14 * 8)($sp)   #
+    ld $s6, (15 * 8)($sp)   #
+    ld $s7, (16 * 8)($sp)   #
+    ld $s8, (17 * 8)($sp)   #
+    ld $t3, (18 * 8)($sp)   # import!!!, $ra will override this region
+    daddiu  $sp, $sp, 256
+    sd $t3, (0)($sp)
+    jr $ra
+
 ###################################################################################### generic outro for both cases...
 trampoline_exit:
 
         # -------------------- #
 
         # restore the registers
-        ld $ra, (0 * 8)($sp)
+#ld $ra, (0 * 8)($sp)
         ld $a0, (1 * 8)($sp)
         ld $a1, (2 * 8)($sp)
         ld $a2, (3 * 8)($sp)
         ld $a3, (4 * 8)($sp)
         ld $a4, (5 * 8)($sp)
         ld $t9, (7 * 8)($sp)
-        daddiu  $sp, $sp, 128
+    ld $s0, (9 * 8)($sp)   #
+    ld $s1, (10 * 8)($sp)   #
+    ld $s2, (11 * 8)($sp)   #
+    ld $s3, (12 * 8)($sp)   #
+    ld $s4, (13 * 8)($sp)   #
+    ld $s5, (14 * 8)($sp)   #
+    ld $s6, (15 * 8)($sp)   #
+    ld $s7, (16 * 8)($sp)   #
+    ld $s8, (17 * 8)($sp)   #
+#daddiu  $sp, $sp, 256
 
         # -------------------- #
 

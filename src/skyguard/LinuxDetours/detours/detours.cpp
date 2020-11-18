@@ -647,7 +647,7 @@ inline ULONG detour_is_code_filler(PBYTE pbCode)
 //
 #ifdef DETOURS_MIPS64
 
-const ULONG DETOUR_TRAMPOLINE_CODE_SIZE = 0x150;
+const ULONG DETOUR_TRAMPOLINE_CODE_SIZE = 0x200;
 
 struct _DETOUR_TRAMPOLINE
 {
@@ -723,59 +723,122 @@ inline std::string generate_asm_hard_code()
     array[i++] = 0x03e0702d;   // 34:    03e0702d    move    t2,ra    
     array[i++] = 0x01e0f82d;   // 38:    01e0f82d    move    ra,t3    
     array[i++] = 0x65cdfff4;   // 3c:    65cdfff4    daddiu    t1,t2,-12    
-    array[i++] = 0x67bdff80;   // 40:    67bdff80    daddiu    sp,sp,-128    
-    array[i++] = 0xffbf0000;   // 44:    ffbf0000    sd    ra,0(sp)    
-    array[i++] = 0xffa40008;   // 48:    ffa40008    sd    a0,8(sp)    
-    array[i++] = 0xffa50010;   // 4c:    ffa50010    sd    a1,16(sp)    
-    array[i++] = 0xffa60018;   // 50:    ffa60018    sd    a2,24(sp)    
-    array[i++] = 0xffa70020;   // 54:    ffa70020    sd    a3,32(sp)    
-    array[i++] = 0xffa80028;   // 58:    ffa80028    sd    a4,40(sp)    
-    array[i++] = 0xffad0030;   // 5c:    ffad0030    sd    t1,48(sp)    
-    array[i++] = 0xffb90038;   // 60:    ffb90038    sd    t9,56(sp)    
-    array[i++] = 0xdfa40030;   // 64:    dfa40030    ld    a0,48(sp)    
-    array[i++] = 0x03e0282d;   // 68:    03e0282d    move    a1,ra    
-    array[i++] = 0x67a60080;   // 6c:    67a60080    daddiu    a2,sp,128    
-    array[i++] = 0xdfad0030;   // 70:    dfad0030    ld    t1,48(sp)    
-    array[i++] = 0x65adffd8;   // 74:    65adffd8    daddiu    t1,t1,-40    
-    array[i++] = 0xddac0000;   // 78:    ddac0000    ld    t0,0(t1)    
-    array[i++] = 0x0180c82d;   // 7c:    0180c82d    move    t9,t0    
-    array[i++] = 0x0320f809;   // 80:    0320f809    jalr    t9    
-    array[i++] = 0x00000000;   // 84:    00000000    nop    
-    array[i++] = 0x1440000e;   // 88:    1440000e    bnez    v0,c4    <call_hook_handler>    
-    array[i++] = 0x00000000;   // 8c:    00000000    nop    
-    array[i++] = 0xdfad0030;   // 90:    dfad0030    ld    t1,48(sp)    
-    array[i++] = 0x65adffe0;   // 94:    65adffe0    daddiu    t1,t1,-32    
-    array[i++] = 0xddac0000;   // 98:    ddac0000    ld    t0,0(t1)    
-    array[i++] = 0xdfbf0000;   // 9c:    dfbf0000    ld    ra,0(sp)    
-    array[i++] = 0xdfa40008;   // a0:    dfa40008    ld    a0,8(sp)    
-    array[i++] = 0xdfa50010;   // a4:    dfa50010    ld    a1,16(sp)    
-    array[i++] = 0xdfa60018;   // a8:    dfa60018    ld    a2,24(sp)    
-    array[i++] = 0xdfa70020;   // ac:    dfa70020    ld    a3,32(sp)    
-    array[i++] = 0xdfa80028;   // b0:    dfa80028    ld    a4,40(sp)    
-    array[i++] = 0xdfb90038;   // b4:    dfb90038    ld    t9,56(sp)    
-    array[i++] = 0x67bd0080;   // b8:    67bd0080    daddiu    sp,sp,128    
-    array[i++] = 0x01800008;   // bc:    01800008    jr    t0    
-    array[i++] = 0x00000000;   // c0:    00000000    nop    
-    array[i++] = 0xdfad0030;   // c4:    dfad0030    ld    t1,48(sp)    
-    array[i++] = 0x65adffe8;   // c8:    65adffe8    daddiu    t1,t1,-24    
-    array[i++] = 0xddac0000;   // cc:    ddac0000    ld    t0,0(t1)    
-    array[i++] = 0x0180c82d;   // d0:    0180c82d    move    t9,t0    
-    array[i++] = 0x10000001;   // d4:    10000001    b    dc    <trampoline_exit>    
-    array[i++] = 0x00000000;   // d8:    00000000    nop    
-    array[i++] = 0xdfbf0000;   // dc:    dfbf0000    ld    ra,0(sp)    
-    array[i++] = 0xdfa40008;   // e0:    dfa40008    ld    a0,8(sp)    
-    array[i++] = 0xdfa50010;   // e4:    dfa50010    ld    a1,16(sp)    
-    array[i++] = 0xdfa60018;   // e8:    dfa60018    ld    a2,24(sp)    
-    array[i++] = 0xdfa70020;   // ec:    dfa70020    ld    a3,32(sp)    
-    array[i++] = 0xdfa80028;   // f0:    dfa80028    ld    a4,40(sp)    
-    array[i++] = 0xdfb90038;   // f4:    dfb90038    ld    t9,56(sp)    
-    array[i++] = 0x67bd0080;   // f8:    67bd0080    daddiu    sp,sp,128    
-    array[i++] = 0x0180c82d;   // fc:    0180c82d    move    t9,t0    
-    array[i++] = 0x03200008;   // 100:    03200008    jr    t9    
-    array[i++] = 0x00000000;   // 104:    00000000    nop    
-    array[i++] = 0x12345678;   // 108:    12345678    beq    s1,s4,15aec    <SEGMENT1+0x159e0>    
-    array[i++] = 0x64636261;   // 10c:    64636261    daddiu    v1,v1,25185    
-    array[i++] = 0x00676665;   // 110:    00676665    0x676665    
+    array[i++] = 0xdfaf0000;   // 40:    dfaf0000    ld    t3,0(sp)    
+    array[i++] = 0x67bdff00;   // 44:    67bdff00    daddiu    sp,sp,-256    
+    array[i++] = 0xffbf0000;   // 48:    ffbf0000    sd    ra,0(sp)    
+    array[i++] = 0xffa40008;   // 4c:    ffa40008    sd    a0,8(sp)    
+    array[i++] = 0xffa50010;   // 50:    ffa50010    sd    a1,16(sp)    
+    array[i++] = 0xffa60018;   // 54:    ffa60018    sd    a2,24(sp)    
+    array[i++] = 0xffa70020;   // 58:    ffa70020    sd    a3,32(sp)    
+    array[i++] = 0xffa80028;   // 5c:    ffa80028    sd    a4,40(sp)    
+    array[i++] = 0xffad0030;   // 60:    ffad0030    sd    t1,48(sp)    
+    array[i++] = 0xffb90038;   // 64:    ffb90038    sd    t9,56(sp)    
+    array[i++] = 0xffbd0040;   // 68:    ffbd0040    sd    sp,64(sp)    
+    array[i++] = 0xffb00048;   // 6c:    ffb00048    sd    s0,72(sp)    
+    array[i++] = 0xffb10050;   // 70:    ffb10050    sd    s1,80(sp)    
+    array[i++] = 0xffb20058;   // 74:    ffb20058    sd    s2,88(sp)    
+    array[i++] = 0xffb30060;   // 78:    ffb30060    sd    s3,96(sp)    
+    array[i++] = 0xffb40068;   // 7c:    ffb40068    sd    s4,104(sp)    
+    array[i++] = 0xffb50070;   // 80:    ffb50070    sd    s5,112(sp)    
+    array[i++] = 0xffb60078;   // 84:    ffb60078    sd    s6,120(sp)    
+    array[i++] = 0xffb70080;   // 88:    ffb70080    sd    s7,128(sp)    
+    array[i++] = 0xffbe0088;   // 8c:    ffbe0088    sd    s8,136(sp)    
+    array[i++] = 0xffaf0090;   // 90:    ffaf0090    sd    t3,144(sp)    
+    array[i++] = 0xdfa40030;   // 94:    dfa40030    ld    a0,48(sp)    
+    array[i++] = 0x03e0282d;   // 98:    03e0282d    move    a1,ra    
+    array[i++] = 0x67a60100;   // 9c:    67a60100    daddiu    a2,sp,256    
+    array[i++] = 0xdfad0030;   // a0:    dfad0030    ld    t1,48(sp)    
+    array[i++] = 0x65adffd8;   // a4:    65adffd8    daddiu    t1,t1,-40    
+    array[i++] = 0xddac0000;   // a8:    ddac0000    ld    t0,0(t1)    
+    array[i++] = 0x0180c82d;   // ac:    0180c82d    move    t9,t0    
+    array[i++] = 0x0320f809;   // b0:    0320f809    jalr    t9    
+    array[i++] = 0x00000000;   // b4:    00000000    nop    
+    array[i++] = 0x14400018;   // b8:    14400018    bnez    v0,11c    <call_hook_handler>    
+    array[i++] = 0x00000000;   // bc:    00000000    nop    
+    array[i++] = 0xdfad0030;   // c0:    dfad0030    ld    t1,48(sp)    
+    array[i++] = 0x65adffe0;   // c4:    65adffe0    daddiu    t1,t1,-32    
+    array[i++] = 0xddac0000;   // c8:    ddac0000    ld    t0,0(t1)    
+    array[i++] = 0xdfbf0000;   // cc:    dfbf0000    ld    ra,0(sp)    
+    array[i++] = 0xdfa40008;   // d0:    dfa40008    ld    a0,8(sp)    
+    array[i++] = 0xdfa50010;   // d4:    dfa50010    ld    a1,16(sp)    
+    array[i++] = 0xdfa60018;   // d8:    dfa60018    ld    a2,24(sp)    
+    array[i++] = 0xdfa70020;   // dc:    dfa70020    ld    a3,32(sp)    
+    array[i++] = 0xdfa80028;   // e0:    dfa80028    ld    a4,40(sp)    
+    array[i++] = 0xdfb90038;   // e4:    dfb90038    ld    t9,56(sp)    
+    array[i++] = 0xdfbd0040;   // e8:    dfbd0040    ld    sp,64(sp)    
+    array[i++] = 0xdfb00048;   // ec:    dfb00048    ld    s0,72(sp)    
+    array[i++] = 0xdfb10050;   // f0:    dfb10050    ld    s1,80(sp)    
+    array[i++] = 0xdfb20058;   // f4:    dfb20058    ld    s2,88(sp)    
+    array[i++] = 0xdfb30060;   // f8:    dfb30060    ld    s3,96(sp)    
+    array[i++] = 0xdfb40068;   // fc:    dfb40068    ld    s4,104(sp)    
+    array[i++] = 0xdfb50070;   // 100:    dfb50070    ld    s5,112(sp)    
+    array[i++] = 0xdfb60078;   // 104:    dfb60078    ld    s6,120(sp)    
+    array[i++] = 0xdfb70080;   // 108:    dfb70080    ld    s7,128(sp)    
+    array[i++] = 0xdfbe0088;   // 10c:    dfbe0088    ld    s8,136(sp)    
+    array[i++] = 0x67bd0100;   // 110:    67bd0100    daddiu    sp,sp,256    
+    array[i++] = 0x01800008;   // 114:    01800008    jr    t0    
+    array[i++] = 0x00000000;   // 118:    00000000    nop    
+    array[i++] = 0x04110001;   // 11c:    04110001    bal    124    <call_hook_handler+0x8>    
+    array[i++] = 0x00000000;   // 120:    00000000    nop    
+    array[i++] = 0x03e0702d;   // 124:    03e0702d    move    t2,ra    
+    array[i++] = 0x65df0020;   // 128:    65df0020    daddiu    ra,t2,32    
+    array[i++] = 0xdfad0030;   // 12c:    dfad0030    ld    t1,48(sp)    
+    array[i++] = 0x65adffe8;   // 130:    65adffe8    daddiu    t1,t1,-24    
+    array[i++] = 0xddac0000;   // 134:    ddac0000    ld    t0,0(t1)    
+    array[i++] = 0x0180c82d;   // 138:    0180c82d    move    t9,t0    
+    array[i++] = 0x1000001e;   // 13c:    1000001e    b    1b8    <trampoline_exit>    
+    array[i++] = 0x00000000;   // 140:    00000000    nop    
+    array[i++] = 0xdfa40030;   // 144:    dfa40030    ld    a0,48(sp)    
+    array[i++] = 0x67a50100;   // 148:    67a50100    daddiu    a1,sp,256    
+    array[i++] = 0xdfad0030;   // 14c:    dfad0030    ld    t1,48(sp)    
+    array[i++] = 0x65adfff0;   // 150:    65adfff0    daddiu    t1,t1,-16    
+    array[i++] = 0xddac0000;   // 154:    ddac0000    ld    t0,0(t1)    
+    array[i++] = 0x0180c82d;   // 158:    0180c82d    move    t9,t0    
+    array[i++] = 0x0320f809;   // 15c:    0320f809    jalr    t9    
+    array[i++] = 0x00000000;   // 160:    00000000    nop    
+    array[i++] = 0xdfbf0000;   // 164:    dfbf0000    ld    ra,0(sp)    
+    array[i++] = 0xdfa40008;   // 168:    dfa40008    ld    a0,8(sp)    
+    array[i++] = 0xdfa50010;   // 16c:    dfa50010    ld    a1,16(sp)    
+    array[i++] = 0xdfa60018;   // 170:    dfa60018    ld    a2,24(sp)    
+    array[i++] = 0xdfa70020;   // 174:    dfa70020    ld    a3,32(sp)    
+    array[i++] = 0xdfa80028;   // 178:    dfa80028    ld    a4,40(sp)    
+    array[i++] = 0xdfb90038;   // 17c:    dfb90038    ld    t9,56(sp)    
+    array[i++] = 0xdfb00048;   // 180:    dfb00048    ld    s0,72(sp)    
+    array[i++] = 0xdfb10050;   // 184:    dfb10050    ld    s1,80(sp)    
+    array[i++] = 0xdfb20058;   // 188:    dfb20058    ld    s2,88(sp)    
+    array[i++] = 0xdfb30060;   // 18c:    dfb30060    ld    s3,96(sp)    
+    array[i++] = 0xdfb40068;   // 190:    dfb40068    ld    s4,104(sp)    
+    array[i++] = 0xdfb50070;   // 194:    dfb50070    ld    s5,112(sp)    
+    array[i++] = 0xdfb60078;   // 198:    dfb60078    ld    s6,120(sp)    
+    array[i++] = 0xdfb70080;   // 19c:    dfb70080    ld    s7,128(sp)    
+    array[i++] = 0xdfbe0088;   // 1a0:    dfbe0088    ld    s8,136(sp)    
+    array[i++] = 0xdfaf0090;   // 1a4:    dfaf0090    ld    t3,144(sp)    
+    array[i++] = 0x67bd0100;   // 1a8:    67bd0100    daddiu    sp,sp,256    
+    array[i++] = 0xffaf0000;   // 1ac:    ffaf0000    sd    t3,0(sp)    
+    array[i++] = 0x03e00008;   // 1b0:    03e00008    jr    ra    
+    array[i++] = 0x00000000;   // 1b4:    00000000    nop    
+    array[i++] = 0xdfa40008;   // 1b8:    dfa40008    ld    a0,8(sp)    
+    array[i++] = 0xdfa50010;   // 1bc:    dfa50010    ld    a1,16(sp)    
+    array[i++] = 0xdfa60018;   // 1c0:    dfa60018    ld    a2,24(sp)    
+    array[i++] = 0xdfa70020;   // 1c4:    dfa70020    ld    a3,32(sp)    
+    array[i++] = 0xdfa80028;   // 1c8:    dfa80028    ld    a4,40(sp)    
+    array[i++] = 0xdfb90038;   // 1cc:    dfb90038    ld    t9,56(sp)    
+    array[i++] = 0xdfb00048;   // 1d0:    dfb00048    ld    s0,72(sp)    
+    array[i++] = 0xdfb10050;   // 1d4:    dfb10050    ld    s1,80(sp)    
+    array[i++] = 0xdfb20058;   // 1d8:    dfb20058    ld    s2,88(sp)    
+    array[i++] = 0xdfb30060;   // 1dc:    dfb30060    ld    s3,96(sp)    
+    array[i++] = 0xdfb40068;   // 1e0:    dfb40068    ld    s4,104(sp)    
+    array[i++] = 0xdfb50070;   // 1e4:    dfb50070    ld    s5,112(sp)    
+    array[i++] = 0xdfb60078;   // 1e8:    dfb60078    ld    s6,120(sp)    
+    array[i++] = 0xdfb70080;   // 1ec:    dfb70080    ld    s7,128(sp)    
+    array[i++] = 0xdfbe0088;   // 1f0:    dfbe0088    ld    s8,136(sp)    
+    array[i++] = 0x0180c82d;   // 1f4:    0180c82d    move    t9,t0    
+    array[i++] = 0x03200008;   // 1f8:    03200008    jr    t9    
+    array[i++] = 0x00000000;   // 1fc:    00000000    nop    
+    array[i++] = 0x12345678;   // 200:    12345678    beq    s1,s4,15be4    <SEGMENT1+0x159e0>    
+    array[i++] = 0x64636261;   // 204:    64636261    daddiu    v1,v1,25185    
+    array[i++] = 0x00676665;   // 208:    00676665    0x676665    
+    array[i++] = 0x00000000;   // 20c:    00000000    nop    
     // this is a split comment
 
     std::string hard_code(reinterpret_cast<char*>(array), sizeof(array));
@@ -2437,6 +2500,11 @@ void* BarrierOutro(DETOUR_TRAMPOLINE* InHandle, void** InAddrOfRetAddr)
     InHandle = (DETOUR_TRAMPOLINE*)((PBYTE)(InHandle)-(sizeof(DETOUR_TRAMPOLINE) - DETOUR_TRAMPOLINE_CODE_SIZE));
     //InHandle -= 1;
 #endif
+
+#if defined(DETOURS_MIPS64)
+    InHandle = (DETOUR_TRAMPOLINE*)((PBYTE)(InHandle)-(sizeof(DETOUR_TRAMPOLINE) - DETOUR_TRAMPOLINE_CODE_SIZE));
+    //InHandle -= 1;
+#endif
     
     DETOUR_ASSERT(AcquireSelfProtection(), "detours.cpp - AcquireSelfProtection()");
 
@@ -2454,7 +2522,9 @@ void* BarrierOutro(DETOUR_TRAMPOLINE* InHandle, void** InAddrOfRetAddr)
 
     Runtime->IsExecuting = FALSE;
 
+#ifndef DETOURS_MIPS64
     DETOUR_ASSERT(*InAddrOfRetAddr == NULL, "detours.cpp - *InAddrOfRetAddr == NULL");
+#endif
 
     *InAddrOfRetAddr = Runtime->RetAddress;
 
