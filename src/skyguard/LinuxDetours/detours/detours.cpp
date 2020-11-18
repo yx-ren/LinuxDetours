@@ -1696,7 +1696,7 @@ static PVOID detour_alloc_region_in_boundary(PBYTE low, PBYTE high, PBYTE target
     int max_retry_times = 10000;
     PBYTE pbTry = low;
     bool found_region = false;
-    while (pbTry < high)
+    while (pbTry < high - DETOUR_REGION_SIZE)
     {
         if (retry_times > max_retry_times)
         {
