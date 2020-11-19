@@ -25,37 +25,55 @@
 #include <string.h>
 #include <unistd.h>
 
-#define USE_CUSTOM_FUNCTION 0
+#define USE_SYSTEM_FUNCTION 1
+#define USE_CUSTOM_FUNCTION_WITH_1_ARGUMENTS 1
+#define USE_CUSTOM_FUNCTION_WITH_2_ARGUMENTS 1
+#define USE_CUSTOM_FUNCTION_WITH_3_ARGUMENTS 1
+#define USE_CUSTOM_FUNCTION_WITH_4_ARGUMENTS 1
+#define USE_CUSTOM_FUNCTION_WITH_8_ARGUMENTS 1
 
 unsigned int sleep_detour(unsigned int seconds)
 {
     LOG(INFO) << "detours_test: Called sleep_detour()";
     return sleep(seconds);
 }
-unsigned int test_detour_b(unsigned int seconds, unsigned int a, unsigned int b, unsigned int c, unsigned int d, unsigned int e)
+
+unsigned int test_custom(unsigned int seconds, unsigned int a, unsigned int b, unsigned int c, unsigned int d,
+        unsigned int e, int f, int g)
 {
-    LOG(INFO) << "detours_test: Called test_detour_b";
-    return seconds + 1;
+    LOG(INFO) << "detours_test: Called test_custom() with params: "
+        << seconds << ", " << a << ", " << b << ", " << c << ", " << d << ", " << e << ", "
+        << f << ", " << g <<"."
+        ;
+
+    return seconds + 100;
 }
-unsigned int test_detour_a(unsigned int seconds, unsigned int a, unsigned int b, unsigned int c, unsigned int d, unsigned int e)
+
+unsigned int test_custom_detour(unsigned int seconds, unsigned int a, unsigned int b, unsigned int c, unsigned int d,
+        unsigned int e, int f, int g)
 {
-    LOG(INFO) << "detours_test: Detoured function 'test_detour_b' -> function 'test_detour_a' with params: "
-              << a << ", " << b << ", " << c << ", " << d << ", " << e;
-    return test_detour_b(seconds + 2, a, b, c, d, e);
+    LOG(INFO) << "detours_test: Detoured function 'test_custom' -> function 'test_custom_detour' with params: "
+        << seconds << ", " << a << ", " << b << ", " << c << ", " << d << ", " << e << ", "
+        << f << ", " << g <<"."
+        ;
+
+    return test_custom(seconds, a, b, c, d, e, f, g);
 }
 
 VOID* test_runner(void*)
 {
-#if USE_CUSTOM_FUNCTION
-    LOG(INFO) << "detours_test: Function 'test_detour_b' returned " << test_detour_b(1, 2, 3, 4, 5, 6);
+#if USE_CUSTOM_FUNCTION_WITH_8_ARGUMENTS
+    LOG(INFO) << "detours_test: Function 'test_custom' returned " << test_custom(1, 2, 3, 4, 5, 6, 7, 8);
 #endif
 
+#if USE_SYSTEM_FUNCTION
     sleep(1);
     LOG(INFO) << "detours_test: Calling sleep for 1 second";
     sleep(2);
     LOG(INFO) << "detours_test: Calling sleep again for 2 seconds";
     
     LOG(INFO)  << "detours_test: Done sleeping\n";
+#endif
 
     return NULL;
 }
@@ -146,15 +164,17 @@ int main(int argc, char * argv[])
 
     ULONG ret = 0;
 
+#if USE_SYSTEM_FUNCTION
     LONG sleep_detour_callback = 0;
     TRACED_HOOK_HANDLE sleep_detour_handle = new HOOK_TRACE_INFO();    
     DetourInstallHook((void*)sleep, (void*)sleep_detour, &sleep_detour_callback, sleep_detour_handle);
     ret = DetourSetExclusiveACL(new ULONG(), 1, (TRACED_HOOK_HANDLE)sleep_detour_handle);
+#endif
 
-#if USE_CUSTOM_FUNCTION
+#if USE_CUSTOM_FUNCTION_WITH_8_ARGUMENTS
     LONG test_detour_callback = 0;
     TRACED_HOOK_HANDLE test_detour_handle = new HOOK_TRACE_INFO();
-    DetourInstallHook((void*)test_detour_b, (void*)test_detour_a, &test_detour_callback, test_detour_handle);
+    DetourInstallHook((void*)test_custom, (void*)test_custom_detour, &test_detour_callback, test_detour_handle);
     ret = DetourSetExclusiveACL(new ULONG(), 1, (TRACED_HOOK_HANDLE)test_detour_handle);
 #endif
 
@@ -167,15 +187,17 @@ int main(int argc, char * argv[])
     pthread_create(&t, NULL, test_runner, NULL);
     pthread_join(t, NULL);
 
+#if USE_SYSTEM_FUNCTION
     DetourUninstallHook(sleep_detour_handle);
     delete sleep_detour_handle;
+#endif
 
-#if USE_CUSTOM_FUNCTION
+#if USE_CUSTOM_FUNCTION_WITH_8_ARGUMENTS
     delete test_detour_handle;
     DetourUninstallHook(test_detour_handle);
 #endif
 
-    sleep(1);
+    //sleep(1);
 
     DetourCriticalFinalize();
     DetourBarrierProcessDetach();

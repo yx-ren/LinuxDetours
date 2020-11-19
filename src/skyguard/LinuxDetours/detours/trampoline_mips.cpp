@@ -68,7 +68,7 @@ trampoline_template_mips64:
 
         # store the registers and some value into stack
         ld $t3, ($sp)           # protected $sp 8 byte
-        daddiu  $sp, $sp, -256
+        daddiu  $sp, $sp, -512
         sd $ra, (0 * 8)($sp)    # save the Remain address
         sd $a0, (1 * 8)($sp)    # protected $a0 register (Arguments to functions)
         sd $a1, (2 * 8)($sp)    # protected $a1 register (Arguments to functions)
@@ -88,6 +88,9 @@ trampoline_template_mips64:
         sd $s7, (16 * 8)($sp)   #
         sd $s8, (17 * 8)($sp)   #
         sd $t3, (18 * 8)($sp)   # import!!!, $ra will override this region
+        sd $a5, (19 * 8)($sp)   # protected $a5 register (Arguments to functions)
+        sd $a6, (20 * 8)($sp)   # protected $a6 register (Arguments to functions)
+        sd $a7, (21 * 8)($sp)   # protected $a7 register (Arguments to functions)
 
 ###################################################################################### call hook handler or original method...
 ## call NET intro
@@ -106,7 +109,7 @@ trampoline_template_mips64:
     move $a1, $ra           # a1 save the return address
 
     # get arg3
-    daddiu $a2, $sp, 256    # a2 save the origin rsp
+    daddiu $a2, $sp, 512    # a2 save the origin rsp
 
     # get [NETIntro] address
     ld $13, (6 * 8)($sp)    # restore base line to $t1 
@@ -145,7 +148,10 @@ trampoline_template_mips64:
     ld $s6, (15 * 8)($sp)   #
     ld $s7, (16 * 8)($sp)   #
     ld $s8, (17 * 8)($sp)   #
-    daddiu  $sp, $sp, 256
+    ld $a5, (19 * 8)($sp)
+    ld $a6, (20 * 8)($sp)
+    ld $a7, (21 * 8)($sp)
+    daddiu  $sp, $sp, 512
 
     # -------------------- #
 
@@ -153,17 +159,13 @@ trampoline_template_mips64:
 
 call_hook_handler:
 ## adjust return address
-#lea %rax, [%rip + call_net_outro]
-#mov %r9, [%rsp + 32 + 8 * 16 + 6 * 8 + 8] ## %r9 = original %rsp
-#mov qword ptr [%r9], %rax
-
     # get pc instruction
     bal 4
     move $14,$31            # move t2,ra
-#daddiu $13, $14, -12    # t1 = t2 - 12 // $t1 save the base line, 12 is offset from base line to PC
-    daddiu $ra, $14, 32    # t1 = t2 - 12 // $t1 save the base line, 12 is offset from base line to PC
-#ld $ra, call_net_outro
+    daddiu $ra, $14, 32     # [32 byte] is the [offset] of the [$pc+1] until [call_net_outro]
+                            # if modify(add or delete) [get Hook Proc Address sgement], must be modify [offset] !!!
 
+    # -------------------- get Hook Proc Address sgement -------------------- #
     # get Hook Proc Address and saved into $t9 register
     ld $13, (6 * 8)($sp)    # restore base line to t1 
     daddiu $13, $13, -24    # t1 -= 24 // $t1 save the address of the [NewProc] address
@@ -171,14 +173,19 @@ call_hook_handler:
     move $25, $12           # save [NewProc] to $t9, because [$gp] calculate with $t9 in next stack
 
     j trampoline_exit
+    # -------------------- get Hook Proc Address sgement -------------------- #
 
-call_net_outro: ## this is where the handler returns...
+call_net_outro: ## this is where the hook proc returns...
+
+    # protected return value from hook proc, because call Hook->NETOutro(Hook, InitialRSP) will modify return value
+    sd $v0, (30 * 8)($sp)   # protected $v0 register (return value from hook_proc())
+    sd $v1, (31 * 8)($sp)   # protected $v1 register (return value from hook_proc())
 
     # get arg1
     ld $a0, (6 * 8)($sp)    # a0 save restore base line
 
     # get arg2
-    daddiu $a1, $sp, 256    # a1 save the origin rsp
+    daddiu $a1, $sp, 512    # a1 save the origin rsp
 
     # get [NETOutro] address
     ld $13, (6 * 8)($sp)    # restore base line to $t1 
@@ -207,7 +214,12 @@ call_net_outro: ## this is where the handler returns...
     ld $s7, (16 * 8)($sp)   #
     ld $s8, (17 * 8)($sp)   #
     ld $t3, (18 * 8)($sp)   # import!!!, $ra will override this region
-    daddiu  $sp, $sp, 256
+    ld $a5, (19 * 8)($sp)
+    ld $a6, (20 * 8)($sp)
+    ld $a7, (21 * 8)($sp)
+    ld $v0, (30 * 8)($sp)
+    ld $v1, (31 * 8)($sp)
+    daddiu  $sp, $sp, 512
     sd $t3, (0)($sp)
     jr $ra
 
@@ -224,16 +236,19 @@ trampoline_exit:
         ld $a3, (4 * 8)($sp)
         ld $a4, (5 * 8)($sp)
         ld $t9, (7 * 8)($sp)
-    ld $s0, (9 * 8)($sp)   #
-    ld $s1, (10 * 8)($sp)   #
-    ld $s2, (11 * 8)($sp)   #
-    ld $s3, (12 * 8)($sp)   #
-    ld $s4, (13 * 8)($sp)   #
-    ld $s5, (14 * 8)($sp)   #
-    ld $s6, (15 * 8)($sp)   #
-    ld $s7, (16 * 8)($sp)   #
-    ld $s8, (17 * 8)($sp)   #
-#daddiu  $sp, $sp, 256
+        ld $s0, (9 * 8)($sp)
+        ld $s1, (10 * 8)($sp)
+        ld $s2, (11 * 8)($sp)
+        ld $s3, (12 * 8)($sp)
+        ld $s4, (13 * 8)($sp)
+        ld $s5, (14 * 8)($sp)
+        ld $s6, (15 * 8)($sp)
+        ld $s7, (16 * 8)($sp)
+        ld $s8, (17 * 8)($sp)
+        ld $a5, (19 * 8)($sp)
+        ld $a6, (20 * 8)($sp)
+        ld $a7, (21 * 8)($sp)
+#daddiu  $sp, $sp, 512
 
         # -------------------- #
 
