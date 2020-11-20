@@ -91,15 +91,13 @@ trampoline_template_mips64:
         sd $a5, (19 * 8)($sp)   # protected $a5 register (Arguments to functions)
         sd $a6, (20 * 8)($sp)   # protected $a6 register (Arguments to functions)
         sd $a7, (21 * 8)($sp)   # protected $a7 register (Arguments to functions)
+        sd $v0, (30 * 8)($sp)   # protected $v0 register
+        sd $v1, (31 * 8)($sp)   # protected $v1 register
+       #sd $v0, (40 * 8)($sp)   # placeholder, protected return value of call hook_proc(), used for hook_proc() branch
+       #sd $v1, (41 * 8)($sp)   # placeholder, protected return value of call hook_proc(), used for hook_proc() branch
 
 ###################################################################################### call hook handler or original method...
 ## call NET intro
-## TODO......
-#    lea %rdi, [%rip + IsExecutedPtr + 8] ## Hook handle (only a position hint)
-#    ## Here we are under the alignment trick.
-#    mov %rdx, [%rsp + 32 + 8 * 16 + 6 * 8 + 8] ## %rdx = original %rsp (address of return address)
-#    mov %rsi, [%rdx] ## return address (value stored in original %rsp)
-#    call qword ptr [%rip + NETIntro] ## Hook->NETIntro(Hook, RetAddr, InitialRSP)##
 
 ## should call original method?
     # get arg1
@@ -151,10 +149,13 @@ trampoline_template_mips64:
     ld $a5, (19 * 8)($sp)
     ld $a6, (20 * 8)($sp)
     ld $a7, (21 * 8)($sp)
+    ld $v0, (30 * 8)($sp)
+    ld $v1, (31 * 8)($sp)
     daddiu  $sp, $sp, 512
 
     # -------------------- #
 
+    # return to user, finish origin_proc() branch
     jr $12                  # jr $t0
 
 call_hook_handler:
@@ -172,14 +173,14 @@ call_hook_handler:
     ld $12, 0($13)          # ld t0, t1 // read 8 byte from $t1, t0 save the [NewProc] address
     move $25, $12           # save [NewProc] to $t9, because [$gp] calculate with $t9 in next stack
 
-    j trampoline_exit
+    j trampoline_exit       # after finish [trampoline_exit], next $pc will jump to call_net_outro
     # -------------------- get Hook Proc Address sgement -------------------- #
 
 call_net_outro: ## this is where the hook proc returns...
 
     # protected return value from hook proc, because call Hook->NETOutro(Hook, InitialRSP) will modify return value
-    sd $v0, (30 * 8)($sp)   # protected $v0 register (return value from hook_proc())
-    sd $v1, (31 * 8)($sp)   # protected $v1 register (return value from hook_proc())
+    sd $v0, (40 * 8)($sp)   # protected $v0 register (return value from hook_proc())
+    sd $v1, (41 * 8)($sp)   # protected $v1 register (return value from hook_proc())
 
     # get arg1
     ld $a0, (6 * 8)($sp)    # a0 save restore base line
@@ -196,7 +197,7 @@ call_net_outro: ## this is where the hook proc returns...
     move $t9, $12
     jalr $t9
 
-    # return
+    # return to user, finish hook_proc() branch
     ld $ra, (0 * 8)($sp)
     ld $a0, (1 * 8)($sp)
     ld $a1, (2 * 8)($sp)
@@ -217,8 +218,8 @@ call_net_outro: ## this is where the hook proc returns...
     ld $a5, (19 * 8)($sp)
     ld $a6, (20 * 8)($sp)
     ld $a7, (21 * 8)($sp)
-    ld $v0, (30 * 8)($sp)
-    ld $v1, (31 * 8)($sp)
+    ld $v0, (40 * 8)($sp)
+    ld $v1, (41 * 8)($sp)
     daddiu  $sp, $sp, 512
     sd $t3, (0)($sp)
     jr $ra
@@ -248,11 +249,13 @@ trampoline_exit:
         ld $a5, (19 * 8)($sp)
         ld $a6, (20 * 8)($sp)
         ld $a7, (21 * 8)($sp)
+        ld $v0, (30 * 8)($sp)
+        ld $v1, (31 * 8)($sp)
 #daddiu  $sp, $sp, 512
 
         # -------------------- #
 
-        # jump to the address
+        # jump to the hook_proc address, and then return to [call_net_outro]
         move $25, $12           # move $t9, $t0
         jr $25                  # jr $t9
 
