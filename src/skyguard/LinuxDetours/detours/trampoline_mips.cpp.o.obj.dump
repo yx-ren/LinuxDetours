@@ -1,0 +1,176 @@
+
+/home/renyunxiang/work/github/LinuxDetours/src/skyguard/LinuxDetours/detours/trampoline_mips.cpp.o:     file format elf64-tradlittlemips
+
+
+Disassembly of section .text:
+
+0000000000000000 <NETIntro>:
+	...
+
+0000000000000008 <OldProc>:
+	...
+
+0000000000000010 <NewProc>:
+	...
+
+0000000000000018 <NETOutro>:
+	...
+
+0000000000000020 <IsExecutedPtr>:
+	...
+
+0000000000000028 <trampoline_template_mips64>:
+  28:	03e0782d 	move	t3,ra
+  2c:	04110001 	bal	34 <trampoline_template_mips64+0xc>
+  30:	00000000 	nop
+  34:	03e0702d 	move	t2,ra
+  38:	01e0f82d 	move	ra,t3
+  3c:	65cdfff4 	daddiu	t1,t2,-12
+  40:	dfaf0000 	ld	t3,0(sp)
+  44:	67bdfe00 	daddiu	sp,sp,-512
+  48:	ffbf0000 	sd	ra,0(sp)
+  4c:	ffa40008 	sd	a0,8(sp)
+  50:	ffa50010 	sd	a1,16(sp)
+  54:	ffa60018 	sd	a2,24(sp)
+  58:	ffa70020 	sd	a3,32(sp)
+  5c:	ffa80028 	sd	a4,40(sp)
+  60:	ffad0030 	sd	t1,48(sp)
+  64:	ffb90038 	sd	t9,56(sp)
+  68:	ffbd0040 	sd	sp,64(sp)
+  6c:	ffb00048 	sd	s0,72(sp)
+  70:	ffb10050 	sd	s1,80(sp)
+  74:	ffb20058 	sd	s2,88(sp)
+  78:	ffb30060 	sd	s3,96(sp)
+  7c:	ffb40068 	sd	s4,104(sp)
+  80:	ffb50070 	sd	s5,112(sp)
+  84:	ffb60078 	sd	s6,120(sp)
+  88:	ffb70080 	sd	s7,128(sp)
+  8c:	ffbe0088 	sd	s8,136(sp)
+  90:	ffaf0090 	sd	t3,144(sp)
+  94:	ffa90098 	sd	a5,152(sp)
+  98:	ffaa00a0 	sd	a6,160(sp)
+  9c:	ffab00a8 	sd	a7,168(sp)
+  a0:	ffa200f0 	sd	v0,240(sp)
+  a4:	ffa300f8 	sd	v1,248(sp)
+  a8:	dfa40030 	ld	a0,48(sp)
+  ac:	03e0282d 	move	a1,ra
+  b0:	67a60200 	daddiu	a2,sp,512
+  b4:	dfad0030 	ld	t1,48(sp)
+  b8:	65adffd8 	daddiu	t1,t1,-40
+  bc:	ddac0000 	ld	t0,0(t1)
+  c0:	0180c82d 	move	t9,t0
+  c4:	0320f809 	jalr	t9
+  c8:	00000000 	nop
+  cc:	1440001d 	bnez	v0,144 <call_hook_handler>
+  d0:	00000000 	nop
+  d4:	dfad0030 	ld	t1,48(sp)
+  d8:	65adffe0 	daddiu	t1,t1,-32
+  dc:	ddac0000 	ld	t0,0(t1)
+  e0:	dfbf0000 	ld	ra,0(sp)
+  e4:	dfa40008 	ld	a0,8(sp)
+  e8:	dfa50010 	ld	a1,16(sp)
+  ec:	dfa60018 	ld	a2,24(sp)
+  f0:	dfa70020 	ld	a3,32(sp)
+  f4:	dfa80028 	ld	a4,40(sp)
+  f8:	dfb90038 	ld	t9,56(sp)
+  fc:	dfbd0040 	ld	sp,64(sp)
+ 100:	dfb00048 	ld	s0,72(sp)
+ 104:	dfb10050 	ld	s1,80(sp)
+ 108:	dfb20058 	ld	s2,88(sp)
+ 10c:	dfb30060 	ld	s3,96(sp)
+ 110:	dfb40068 	ld	s4,104(sp)
+ 114:	dfb50070 	ld	s5,112(sp)
+ 118:	dfb60078 	ld	s6,120(sp)
+ 11c:	dfb70080 	ld	s7,128(sp)
+ 120:	dfbe0088 	ld	s8,136(sp)
+ 124:	dfa90098 	ld	a5,152(sp)
+ 128:	dfaa00a0 	ld	a6,160(sp)
+ 12c:	dfab00a8 	ld	a7,168(sp)
+ 130:	dfa200f0 	ld	v0,240(sp)
+ 134:	dfa300f8 	ld	v1,248(sp)
+ 138:	67bd0200 	daddiu	sp,sp,512
+ 13c:	01800008 	jr	t0
+ 140:	00000000 	nop
+
+0000000000000144 <call_hook_handler>:
+ 144:	04110001 	bal	14c <call_hook_handler+0x8>
+ 148:	00000000 	nop
+ 14c:	03e0702d 	move	t2,ra
+ 150:	65df0020 	daddiu	ra,t2,32
+ 154:	dfad0030 	ld	t1,48(sp)
+ 158:	65adffe8 	daddiu	t1,t1,-24
+ 15c:	ddac0000 	ld	t0,0(t1)
+ 160:	0180c82d 	move	t9,t0
+ 164:	10000025 	b	1fc <trampoline_exit>
+ 168:	00000000 	nop
+
+000000000000016c <call_net_outro>:
+ 16c:	ffa20140 	sd	v0,320(sp)
+ 170:	ffa30148 	sd	v1,328(sp)
+ 174:	dfa40030 	ld	a0,48(sp)
+ 178:	67a50200 	daddiu	a1,sp,512
+ 17c:	dfad0030 	ld	t1,48(sp)
+ 180:	65adfff0 	daddiu	t1,t1,-16
+ 184:	ddac0000 	ld	t0,0(t1)
+ 188:	0180c82d 	move	t9,t0
+ 18c:	0320f809 	jalr	t9
+ 190:	00000000 	nop
+ 194:	dfbf0000 	ld	ra,0(sp)
+ 198:	dfa40008 	ld	a0,8(sp)
+ 19c:	dfa50010 	ld	a1,16(sp)
+ 1a0:	dfa60018 	ld	a2,24(sp)
+ 1a4:	dfa70020 	ld	a3,32(sp)
+ 1a8:	dfa80028 	ld	a4,40(sp)
+ 1ac:	dfb90038 	ld	t9,56(sp)
+ 1b0:	dfb00048 	ld	s0,72(sp)
+ 1b4:	dfb10050 	ld	s1,80(sp)
+ 1b8:	dfb20058 	ld	s2,88(sp)
+ 1bc:	dfb30060 	ld	s3,96(sp)
+ 1c0:	dfb40068 	ld	s4,104(sp)
+ 1c4:	dfb50070 	ld	s5,112(sp)
+ 1c8:	dfb60078 	ld	s6,120(sp)
+ 1cc:	dfb70080 	ld	s7,128(sp)
+ 1d0:	dfbe0088 	ld	s8,136(sp)
+ 1d4:	dfaf0090 	ld	t3,144(sp)
+ 1d8:	dfa90098 	ld	a5,152(sp)
+ 1dc:	dfaa00a0 	ld	a6,160(sp)
+ 1e0:	dfab00a8 	ld	a7,168(sp)
+ 1e4:	dfa20140 	ld	v0,320(sp)
+ 1e8:	dfa30148 	ld	v1,328(sp)
+ 1ec:	67bd0200 	daddiu	sp,sp,512
+ 1f0:	ffaf0000 	sd	t3,0(sp)
+ 1f4:	03e00008 	jr	ra
+ 1f8:	00000000 	nop
+
+00000000000001fc <trampoline_exit>:
+ 1fc:	dfa40008 	ld	a0,8(sp)
+ 200:	dfa50010 	ld	a1,16(sp)
+ 204:	dfa60018 	ld	a2,24(sp)
+ 208:	dfa70020 	ld	a3,32(sp)
+ 20c:	dfa80028 	ld	a4,40(sp)
+ 210:	dfb90038 	ld	t9,56(sp)
+ 214:	dfb00048 	ld	s0,72(sp)
+ 218:	dfb10050 	ld	s1,80(sp)
+ 21c:	dfb20058 	ld	s2,88(sp)
+ 220:	dfb30060 	ld	s3,96(sp)
+ 224:	dfb40068 	ld	s4,104(sp)
+ 228:	dfb50070 	ld	s5,112(sp)
+ 22c:	dfb60078 	ld	s6,120(sp)
+ 230:	dfb70080 	ld	s7,128(sp)
+ 234:	dfbe0088 	ld	s8,136(sp)
+ 238:	dfa90098 	ld	a5,152(sp)
+ 23c:	dfaa00a0 	ld	a6,160(sp)
+ 240:	dfab00a8 	ld	a7,168(sp)
+ 244:	dfa200f0 	ld	v0,240(sp)
+ 248:	dfa300f8 	ld	v1,248(sp)
+ 24c:	0180c82d 	move	t9,t0
+ 250:	03200008 	jr	t9
+ 254:	00000000 	nop
+
+0000000000000258 <trampoline_data_mips64>:
+ 258:	12345678 	beq	s1,s4,15c3c <SEGMENT1+0x159e0>
+
+000000000000025c <SEGMENT1>:
+ 25c:	64636261 	daddiu	v1,v1,25185
+ 260:	00676665 	0x676665
+	...
